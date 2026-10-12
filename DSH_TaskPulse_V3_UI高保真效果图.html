@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>DSH TaskPulse V3.0 UI Mockup</title>
+<style>
+body{
+    margin:0;
+    background:#f5f7fb;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+    color:#1f2937;
+}
+.app{
+    width:1200px;
+    height:760px;
+    margin:30px auto;
+    background:white;
+    border-radius:18px;
+    box-shadow:0 20px 60px rgba(0,0,0,.12);
+    overflow:hidden;
+    position:relative;
+}
+.header{
+    height:56px;
+    border-bottom:1px solid #eee;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 22px;
+}
+.logo{
+    font-size:20px;
+    font-weight:700;
+}
+.top-btn{
+    background:rgba(255,255,255,.85);
+    border:1px solid #dbeafe;
+    border-radius:12px;
+    padding:8px 14px;
+    color:#2563eb;
+    box-shadow:0 4px 15px rgba(0,0,0,.08);
+}
+.content{
+    padding:30px;
+    color:#9ca3af;
+}
+.panel{
+    position:absolute;
+    right:20px;
+    top:70px;
+    width:350px;
+    height:600px;
+    background:rgba(255,255,255,.88);
+    backdrop-filter:blur(18px);
+    border-radius:18px;
+    box-shadow:0 15px 45px rgba(0,0,0,.15);
+    border:1px solid #e5e7eb;
+}
+.panel-header{
+    padding:18px;
+    border-bottom:1px solid #eee;
+    display:flex;
+    justify-content:space-between;
+}
+.stats{
+    display:flex;
+    gap:8px;
+    padding:12px 18px;
+}
+.stat{
+    padding:6px 10px;
+    border-radius:12px;
+    background:#f3f4f6;
+    font-size:12px;
+}
+.group{
+    margin:12px;
+    padding:12px;
+    background:#fafafa;
+    border-radius:14px;
+}
+.group-title{
+    font-weight:600;
+    margin-bottom:10px;
+}
+.card{
+    background:white;
+    border-radius:12px;
+    padding:12px;
+    margin-top:8px;
+    box-shadow:0 4px 12px rgba(0,0,0,.05);
+}
+.row{
+    display:flex;
+    justify-content:space-between;
+}
+.status{
+    font-size:12px;
+    padding:3px 8px;
+    border-radius:10px;
+}
+.blue{background:#dbeafe;color:#2563eb}
+.green{background:#dcfce7;color:#16a34a}
+.yellow{background:#fef9c3;color:#ca8a04}
+.red{background:#fee2e2;color:#dc2626}
+.timeline{
+    margin-top:8px;
+    font-size:12px;
+    color:#6b7280;
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+    <div class="header">
+        <div class="logo">DSH</div>
+        <div class="top-btn">🟦 AI任务 8</div>
+    </div>
+
+    <div class="content">
+        <h2>当前对话区域</h2>
+        <p>这里保持 DSH 原始聊天界面，不被任务插件遮挡。</p>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <b>AI TaskPulse</b>
+            <span>⚙</span>
+        </div>
+
+        <div class="stats">
+            <div class="stat">🟦运行 3</div>
+            <div class="stat">🟡确认 2</div>
+            <div class="stat">🔴异常 1</div>
+        </div>
+
+        <div class="group">
+            <div class="group-title">📁 GoldPulse</div>
+
+            <div class="card">
+                <div class="row">
+                    <b>行情接口开发</b>
+                    <span class="status blue">执行中</span>
+                </div>
+                <div class="timeline">
+                    Agent: DeepSeek-Coder<br>
+                    当前: 测试API接口<br>
+                    运行: 18分钟
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="row">
+                    <b>UI方案确认</b>
+                    <span class="status yellow">待确认</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="group">
+            <div class="group-title">📁 BI分析项目</div>
+
+            <div class="card">
+                <div class="row">
+                    <b>SQL优化任务</b>
+                    <span class="status red">异常</span>
+                </div>
+                <div class="timeline">
+                    Error: 数据连接失败
+                </div>
+            </div>
+        </div>
+
+        <div class="group">
+            <div class="group-title">📁 自动化项目</div>
+
+            <div class="card">
+                <div class="row">
+                    <b>Python脚本生成</b>
+                    <span class="status green">完成</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+</body>
+</html>
