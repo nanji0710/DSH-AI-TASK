@@ -1,0 +1,266 @@
+# DSH TaskPulse - CI/CD 工作流
+# ---------------------------------------------------------------------------
+# 触发
+#   push main / dev      构建 + 校验；main 上版本号还没打过 tag 时，自动打 tag 并发 Release
+#   push tag v*          用该 tag 直接发 Release（手动补发 / 重发入口）
+#   pull_request → main  只构建校验，不发布
+#   workflow_dispatch    手动触发，可强制重发 Release
+#
+# 权限
+#   contents: write —— 自动打 tag + 创建 Release 必需（仓库默认是只读）
+#
+# ⚠️ 为什么「自动打 tag」和「发 Release」必须在同一次运行里完成
+#   用 GITHUB_TOKEN 推上去的 tag 不会再次触发 workflow（GitHub 的防递归规则），
+#   所以「先自动打 tag，再由 tag 事件触发发布」的两段式写法在本仓库永远不会
+#   发布成功 —— 它只会安静地打出一个 tag，没有任何 Release 产出。
+#   本文件在同一个 run 内顺序完成：构建 → 打 tag → 建 Release。
+#
+# 版本号约定
+#   版本的唯一来源是 dsh-taskpulse/package.json 的 version 字段，
+#   发布 tag 为 v<version>（例如 version 1.0.0 → tag v1.0.0）。
+#   因此「发一个新版本」= 改 package.json 的 version，push 到 main。
+# ---------------------------------------------------------------------------
+
+name: Build & Release
+
+on:
+  push:
+    branches: [main, dev]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: 强制重新发布 Release（即便 tag 与 Release 都已存在）
+        type: boolean
+        default: false
+
+# 分支上的重复构建取消旧的；tag 发布绝不打断（发布到一半被取消最麻烦）
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+# 创建 tag 与 Release 需要 contents 写权限
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 0) 前置探测：dsh-taskpulse/ 尚未落地时优雅跳过，避免仓库长期挂红叉
+  #    插件目录一旦出现，后续 job 自动开始工作，不需要再改这个文件。
+  # ---------------------------------------------------------------------------
+  detect:
+    name: Detect plugin
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check plugin manifest
+        id: check
+        run: |
+          if [ -f dsh-taskpulse/package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "✅ 检测到 dsh-taskpulse/package.json"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::未找到 dsh-taskpulse/package.json，跳过构建与发布"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 1) 构建与校验
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build & Test
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release_tag.outputs.tag }}
+    defaults:
+      run:
+        working-directory: dsh-taskpulse
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          # 指向 package.json 而不是 lockfile：还没有 lockfile 时 setup-node
+          # 会因「路径无法解析」直接失败，用 package.json 做缓存键没有这个坑。
+          cache-dependency-path: dsh-taskpulse/package.json
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Typecheck
+        run: npm run typecheck --if-present
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test --if-present
+
+      - name: Resolve release tag
+        id: release_tag
+        run: |
+          set -euo pipefail
+          # tag 触发时用 tag 本身；否则由 package.json 的 version 推导 v<version>。
+          # 注意 working-directory 是 dsh-taskpulse，所以这里是 ./package.json。
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v$(node -p "require('./package.json').version")"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "发布 tag：${TAG}"
+
+      # ============ 仅发布场景打包（分支/PR 不打包，省时间） ============
+      - name: Package plugin artifacts
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.release_tag.outputs.tag }}"
+          mkdir -p ../release
+
+          # 1) npm tarball：DSH 支持 `dsh plugin add ./xxx.tgz`。
+          #    统一重命名成 tag 名，保证附件名与 Release 正文里的安装命令逐字一致。
+          npm pack --pack-destination ../release
+          TGZ=$(find ../release -maxdepth 1 -name '*.tgz' -print -quit)
+          if [ -z "$TGZ" ]; then
+            echo "::error::npm pack 没有产出 .tgz"
+            exit 1
+          fi
+          mv "$TGZ" "../release/dsh-taskpulse-${TAG}.tgz"
+
+          # 2) 源码 zip：解压后就是完整插件目录，可本地安装或查阅源码。
+          #    只打包真实存在的文件（icon.svg / LICENSE 等不是每个插件都有）。
+          FILES=()
+          for f in dist cordis.patch.yml cordis.yml icon.svg docs package.json README.md README.zh.md CHANGELOG.md LICENSE; do
+            if [ -e "$f" ]; then FILES+=("$f"); fi
+          done
+          zip -r "../release/dsh-taskpulse-${TAG}.zip" "${FILES[@]}"
+
+          echo "----- release/ -----"
+          ls -lh ../release
+
+      - uses: actions/upload-artifact@v4
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+        with:
+          name: plugin-packages
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # 2) 打 tag + 发 Release —— 幂等：已存在就跳过，重跑安全
+  # ---------------------------------------------------------------------------
+  release:
+    name: Tag & Release
+    needs: [detect, build]
+    # ⚠️ 这里的续行必须保持同一缩进：YAML 折叠标量遇到「更深缩进」的行会保留
+    #    换行符，把裸 \n 塞进表达式里。同一缩进才会折叠成空格。
+    if: >-
+      needs.detect.outputs.present == 'true' &&
+      (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 需要完整 tag 历史，才能判断 tag 是否已存在
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-packages
+          path: release
+
+      - name: Ensure tag exists
+        id: tag_state
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # 问远端而不是本地：本地可能只是没 fetch 到，问远端才是真的准。
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            echo "tag ${TAG} 已存在，跳过创建"
+          else
+            # 注释型 tag（-a）需要提交者身份，而 runner 上的仓库默认没有
+            # user.name / user.email，不显式设置会直接失败：
+            # "Committer identity unknown"。
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+            echo "created=true" >> "$GITHUB_OUTPUT"
+            echo "已创建并推送 tag ${TAG}"
+          fi
+
+      - name: Check existing release
+        id: release_state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${TAG} 已存在"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        if: >-
+          steps.tag_state.outputs.created == 'true' ||
+          steps.release_state.outputs.exists == 'false' ||
+          (github.event_name == 'workflow_dispatch' && inputs.force_release)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: ${{ needs.build.outputs.tag }}
+          files: release/*
+          generate_release_notes: true
+          body: |
+            ## 🟦 DSH TaskPulse ${{ needs.build.outputs.tag }}
+
+            在 DSH 主界面**右上角**常驻一个「AI任务」浮窗：实时汇总各工作区、会话与 Agent 任务的执行状态。
+            展开即可看到任务统计、工作区分组、任务卡片与执行时间线，异常与待确认事项一眼可见。
+
+            **兼容 DSH 桌面端 `v0.2.0-rc.2`**（不兼容 `v0.1.x`）。
+
+            ### 安装（任选一种）
+
+            ```bash
+            # 方式一：下载下面的 .tgz 附件后安装
+            dsh plugin add ./dsh-taskpulse-${{ needs.build.outputs.tag }}.tgz
+            ```
+
+            ```bash
+            # 方式二：下载 .zip 解压出完整插件目录，从本地目录安装
+            dsh plugin add ./dsh-taskpulse
+            ```
+
+            > 装完请**重启一次 DSH**，右上角即会出现 `AI任务` 入口。
+
+            ### 附件说明
+
+            | 文件 | 用途 |
+            | --- | --- |
+            | `dsh-taskpulse-${{ needs.build.outputs.tag }}.tgz` | 打包安装包，用 `dsh plugin add` 直接安装 |
+            | `dsh-taskpulse-${{ needs.build.outputs.tag }}.zip` | 解压后得到完整插件目录，可本地安装或查阅源码 |
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

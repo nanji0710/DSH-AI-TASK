@@ -1,0 +1,5 @@
+# DSH bundle 配方：把 TaskPulse 插入 Cordis 配置树。
+# 插件按包名解析（name 必须等于 package.json 的 name），无需相对路径。
+- insert:
+    - id: taskpulse
+      name: 'dsh-taskpulse'
