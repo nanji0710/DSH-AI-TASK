@@ -8,7 +8,7 @@
 | 项 | 值 |
 |---|---|
 | 插件名 | `dsh-taskpulse` |
-| 版本 | `1.0.0` |
+| 版本 | `1.5.0` |
 | 目标 DSH | `0.2.0-rc.2` |
 | 许可 | MIT |
 
@@ -34,6 +34,7 @@ DSH 里同时开着好几个工作区、每个工作区又有好几条对话时�
 |---|---|
 | 右上角胶囊入口 | `120×32` 半透明玻璃胶囊，实时显示活跃任务数；点击展开 `360×600` 面板。 |
 | 胶囊可拖动 | 收起状态下可拖到 DSH 窗口内任意位置，越界自动钳制在窗口内，位置持久化。 |
+| 状态变迁提示 | 收起状态下，任务新进入 `待确认 / 已达成 / 异常 / 阻塞` 时，胶囊上方或下方弹出一条小提示，写明是哪条对话、`由「进行中」变为「待确认」`；**5 秒后自动消失**。点提示可直接打开该对话详情，点 `✕` 可单独关掉。贴哪一侧由胶囊实时位置算出，不会被窗口裁掉。 |
 | 面板自适应定位 | 面板按胶囊实时位置决定展开方向：下半屏时翻到胶囊上方，贴边时平移回窗口内，两侧都放不下时压缩高度 —— 无论胶囊拖到哪都不会被窗口裁掉。 |
 | 不遮挡聊天区 | 挂载在官方 `shell.overlay` 插槽，层点击穿透，仅胶囊与面板接收事件。 |
 | 按工作区分组 | 任务按 DSH 工作区分组，组头带状态计数，如 `🟦2运行 🟡1确认`。 |
@@ -74,6 +75,9 @@ dsh plugin --profile <profile-name> add <本仓库路径>
 4. 面板体就是按工作区分组的活跃任务列表；上方那排状态统计胶囊**本身就是筛选器**——
    点 `🔴 异常 1` 只看异常，再点一次回到全部。
 5. 按 `Esc`、点击面板外、或点 `✕` 收起面板。
+6. **收起之后它照样替你盯着**：任务新到达值得关注的状态
+   （`待确认 / 已达成 / 异常 / 阻塞`）时，胶囊旁边会冒出一条小提示，5 秒后自己消失。
+   点提示可直接跳到那条对话的详情；点提示上的 `✕` 只关掉这一条。
 
 每张任务卡片只回答两个问题：**这条对话现在处于什么状态**、**正在做哪一步**。
 执行流水（工具调用、子代理派生、完整时间线）属于详情视图，点开卡片即可看到。
@@ -120,7 +124,11 @@ DSH 插件是**双半边**结构，两半边运行在不同进程，通过明确
 
 1. **插槽标准 props**（`useSessions` / `useSessionStatus` / `useWorkspaces`）——
    由 DSH 官方 UI 包提供，零延迟、权威的运行态；
-2. **宿主快照** —— 补充浏览器半边拿不到的信息，如时间线与当前步骤。
+2. **宿主快照** —— 补充浏览器半边拿不到的信息，如时间线、当前步骤，
+   以及只存在于宿主事件流里的 `异常 / 阻塞` 结论。
+
+宿主快照的轮询间隔：面板展开 **2 秒**、胶囊态 **5 秒**（要足够快才能支撑状态变迁提示）、
+页面切到后台 **30 秒**。
 
 之所以必须自建通道：DSH 浏览器侧的事件桥是**封闭白名单**，不转发
 session / agent / tool 事件。
@@ -181,7 +189,7 @@ DSH 里有两条**互相独立**的等人通道。只盯着其中一条的监控
 npm install
 npm run build        # 宿主半边（tsc）+ 浏览器半边（esbuild）
 npm run typecheck    # 两个 tsconfig，均不产出
-npm test             # 七个套件，103 项断言
+npm test             # 八个套件，137 项断言
 ```
 
 构建产物：
@@ -207,10 +215,11 @@ src/
 ├── store/            # 任务 Store、历史 Store、客户端侧合并
 ├── services/         # 事件服务、任务服务、HTTP 桥、客户端 API
 ├── hooks/            # useHostData（轮询）、useCapsuleDrag（拖动）、
-│                     # usePanelGeometry（面板定位）、panel-geometry（纯几何）
+│                     # usePanelGeometry（面板定位）、panel-geometry（纯几何）、
+│                     # useStatusToasts + useToastSide、toast-geometry（纯几何）
 ├── components/       # TaskButton、TaskPanel、WorkspaceGroup、ConversationItem、
 │                     # TaskCard、TaskDetail、StatusBadge、Timeline、
-│                     # ConfirmCard、HistoryCard
+│                     # ConfirmCard、HistoryCard、StatusToast
 └── styles/           # 注入式 CSS
 ```
 
@@ -223,12 +232,13 @@ src/
 | `test/models.test.mjs` | 18 | 状态机、计数、归档规则、格式化、工具标签 |
 | `test/drag.test.mjs` | 13 | 胶囊拖动：边界钳制、持久化、越界回弹 |
 | `test/panel.test.mjs` | 15 | 面板定位：向上/向下展开、横向平移、高度压缩 |
+| `test/toast.test.mjs` | 29 | 状态变迁提示：变迁侦测、仅胶囊态、5 秒到期、上下贴边 |
 | `test/store.test.mjs` | 18 | 双路合并口径：状态收敛、归档剔除、工作区归属、会话数 |
 | `test/taskflow.test.mjs` | 13 | 状态流转：提问/审批两条通道、答复回落、回归保护 |
-| `test/components.test.mjs` | 18 | 渲染结果 —— 列表只显示状态与当前步骤、状态筛选、无重复按钮 |
+| `test/components.test.mjs` | 23 | 渲染结果 —— 列表只显示状态与当前步骤、状态筛选、无重复按钮、提示卡片 |
 | `test/bundle.test.mjs` | 8 | 模块加载契约、external 表、插槽注册 |
 
-合计 **103 项断言**；`node scripts/run-all-tests.mjs` 会打印各套件与总计。
+合计 **137 项断言**；`node scripts/run-all-tests.mjs` 会打印各套件与总计。
 
 ---
 

@@ -294,6 +294,80 @@ const CSS = `
 .tp-footer-btn { border: none; background: transparent; color: var(--dsw-alias-state-business-primary, #2563eb); font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 8px; }
 .tp-footer-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(37, 99, 235, .08)); }
 .tp-footer-hint { font-size: 11px; color: var(--dsw-alias-label-tertiary, #9ca3af); }
+
+/* ---------- 状态变迁提示（需求 m04869） ---------- */
+/*
+ * 位置由内联样式给出（toast-geometry.ts 按胶囊实时位置算出上下与水平偏移），
+ * 这里只描述外观与「贴哪一侧」。
+ *
+ * 上下偏移写死 40px = 胶囊高 32px + TOAST_GAP 8px，与几何模块保持一致。
+ * 宽度 264px 同样与 TOAST_WIDTH 一致（改一处必须改另一处）。
+ *
+ * 插入动画：提示在胶囊上方时从上方滑入，在下方时从下方滑入，
+ * 用 data-side 翻转 translateY 的符号，方向感才与位置一致。
+ */
+.tp-toasts {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 264px;
+  box-sizing: border-box;
+}
+.tp-toasts[data-side="above"] { bottom: 40px; }
+/* 上方展开时容器以底边为锚、按时间顺序自上而下堆叠 ⇒ 最新一条贴着胶囊。
+   下方展开时锚点在顶边，必须反转视觉顺序，才能让最新一条同样最靠近胶囊
+   （DOM 顺序保持时间序，仅反转呈现，读屏仍是时间序）。 */
+.tp-toasts[data-side="below"] { top: 40px; flex-direction: column-reverse; }
+
+.tp-toast {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 9px 10px 9px 12px;
+  border: 1px solid var(--dsw-alias-border-l1, #e5e7eb);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-overlay, rgba(255, 255, 255, .92));
+  backdrop-filter: var(--dsw-menu-backdrop-filter, blur(18px));
+  box-shadow: var(--dsw-elevation-panel, 0 8px 24px rgba(0, 0, 0, .12));
+  text-align: left;
+  font-family: inherit;
+  animation: tp-toast-in var(--ds-transition-duration, .2s) var(--ds-ease-in-out, cubic-bezier(.4, 0, .2, 1));
+}
+.tp-toasts[data-side="above"] .tp-toast { animation-name: tp-toast-in-up; }
+.tp-toast[role="button"] { cursor: pointer; }
+.tp-toast[role="button"]:hover { background: var(--dsw-alias-bg-layer-1, rgba(255, 255, 255, .98)); }
+.tp-toast[role="button"]:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, #2563eb); outline-offset: 1px; }
+/* 左侧状态色条：与 StatusBadge 同一套色表（规范 7），一眼区分是哪种变迁。 */
+.tp-toast::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: currentColor; opacity: .85; }
+.tp-toast-dot { flex: 0 0 auto; width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: currentColor; }
+.tp-toast-main { flex: 1 1 auto; min-width: 0; }
+.tp-toast-title { font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-primary, #1f2937); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-toast-sub { margin-top: 2px; font-size: 11px; color: var(--dsw-alias-label-secondary, #6b7280); }
+.tp-toast-close {
+  flex: 0 0 auto; width: 18px; height: 18px; padding: 0;
+  border: none; border-radius: 6px; background: transparent;
+  color: var(--dsw-alias-label-tertiary, #9ca3af);
+  font-size: 11px; line-height: 18px; text-align: center; cursor: pointer;
+}
+.tp-toast-close:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, .06)); color: var(--dsw-alias-label-primary, #1f2937); }
+.tp-toast[data-tone="blue"] { color: #2563eb; }
+.tp-toast[data-tone="yellow"] { color: #ca8a04; }
+.tp-toast[data-tone="green"] { color: #16a34a; }
+.tp-toast[data-tone="red"] { color: #dc2626; }
+.tp-toast[data-tone="orange"] { color: #ea580c; }
+.tp-toast[data-tone="gray"] { color: #6b7280; }
+
+@keyframes tp-toast-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tp-toast-in-up {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
 `
 
 let injected = false

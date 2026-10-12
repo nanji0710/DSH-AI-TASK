@@ -7,7 +7,7 @@ now** in a floating panel at the top-right corner of the DSH window — a
 multi-workspace, multi-conversation, multi-agent status monitor.
 
 - Plugin name: `dsh-taskpulse`
-- Version: `1.0.0`
+- Version: `1.5.0`
 - Target DSH: `0.2.0-rc.2`
 - License: MIT
 
@@ -19,6 +19,7 @@ multi-workspace, multi-conversation, multi-agent status monitor.
 |---|---|
 | Top-right capsule | A `120×32` glass capsule showing the live active-task count. Click to expand a `360×600` panel. |
 | Draggable capsule | While collapsed, drag the capsule anywhere inside the DSH window. The position is clamped to the window bounds and remembered across sessions. |
+| Status-change toast | While collapsed, a small toast pops above or below the capsule whenever a task newly enters `待确认 / 已达成 / 异常 / 阻塞`, naming the conversation and the transition (`由「进行中」变为「待确认」`). It fades out by itself after **5 seconds**, can be clicked to open that conversation's detail, or dismissed early with `✕`. Which side it appears on is computed from the capsule's live position, so it is never clipped. |
 | Adaptive panel placement | The panel is positioned from the capsule's live location: it flips above the capsule in the lower half of the window, shifts back inside when the capsule hugs an edge, and caps its height when neither side fits — so it is never clipped, wherever the capsule was dragged. |
 | Never covers chat | Mounted on DSH's official `shell.overlay` slot, whose layer is click-through; only the capsule and panel accept pointer events. |
 | Per-workspace grouping | Tasks are grouped by DSH workspace with inline status counters, e.g. `🟦2运行 🟡1确认`. |
@@ -62,6 +63,11 @@ registers the plugin in `dsh.profile.bundles`.
    row above it **is** the status filter: click `🔴 异常 1` to see only failures,
    click it again to go back to all.
 5. Press `Esc`, click outside, or press `✕` to collapse the panel.
+6. **Leave it collapsed** and it will keep working for you: a small toast pops next
+   to the capsule whenever a task newly reaches a state worth knowing about
+   (`待确认 / 已达成 / 异常 / 阻塞`), then disappears on its own after 5 seconds.
+   Click the toast to jump straight into that conversation's detail; click `✕`
+   on the toast to dismiss just that one.
 
 Each task card answers exactly two questions: **what state is this conversation
 in**, and **which step is it on**. Execution detail (tool calls, subagent
@@ -109,7 +115,12 @@ merges two sources:
 1. **Root standard props** (`useSessions`, `useSessionStatus`, `useWorkspaces`)
    contributed by DSH's own UI packages — zero-latency, authoritative run state.
 2. **The host snapshot** — supplies what the browser half cannot see, such as the
-   timeline and current step.
+   timeline, current step and `异常 / 阻塞` outcomes, which exist only in the
+   host-side event stream.
+
+The host snapshot is polled at **2 s** while the panel is expanded, **5 s** while
+collapsed (fast enough to feed the status-change toasts), and **30 s** while the
+page is in the background.
 
 A host-side channel is required because DSH's browser-side event bridge is a
 closed whitelist that does not forward session, agent or tool events.
@@ -177,7 +188,7 @@ mean the tool did **not** run), so a cancelled approval reads as 阻塞 rather t
 npm install
 npm run build        # host half (tsc) + browser half (esbuild)
 npm run typecheck    # both tsconfigs, no emit
-npm test             # seven suites, 103 assertions
+npm test             # eight suites, 137 assertions
 ```
 
 Build output:
@@ -203,10 +214,11 @@ src/
 ├── store/            # task store, history store, client-side merge
 ├── services/         # event service, task service, HTTP bridge, client API
 ├── hooks/            # useHostData (polling), useCapsuleDrag (dragging),
-│                     # usePanelGeometry (placement), panel-geometry (pure math)
+│                     # usePanelGeometry (placement), panel-geometry (pure math),
+│                     # useStatusToasts + useToastSide, toast-geometry (pure math)
 ├── components/       # TaskButton, TaskPanel, WorkspaceGroup, ConversationItem,
 │                     # TaskCard, TaskDetail, StatusBadge, Timeline,
-│                     # ConfirmCard, HistoryCard
+│                     # ConfirmCard, HistoryCard, StatusToast
 └── styles/           # injected CSS
 ```
 
@@ -220,12 +232,13 @@ and `HistoryCard` are additional.
 | `test/models.test.mjs` | 18 | state machine, counters, archiving, formatting, tool labels |
 | `test/drag.test.mjs` | 13 | capsule drag: clamping, persistence, bounds |
 | `test/panel.test.mjs` | 15 | panel placement: flip above/below, horizontal shift, height cap |
+| `test/toast.test.mjs` | 29 | status-change toasts: transition detection, collapsed-only gating, 5-second expiry, above/below placement |
 | `test/store.test.mjs` | 18 | merge rules: status convergence, archive filtering, workspace ownership, counts |
 | `test/taskflow.test.mjs` | 13 | status flow: question/approval channels, reply fallback, regressions |
-| `test/components.test.mjs` | 18 | rendered output — status/step only, status filter, no duplicate button row |
+| `test/components.test.mjs` | 23 | rendered output — status/step only, status filter, no duplicate button row, toast card |
 | `test/bundle.test.mjs` | 8 | module-loader contract, externals, slot registration |
 
-103 assertions in total; `node scripts/run-all-tests.mjs` prints the per-suite and
+137 assertions in total; `node scripts/run-all-tests.mjs` prints the per-suite and
 grand totals.
 
 ---

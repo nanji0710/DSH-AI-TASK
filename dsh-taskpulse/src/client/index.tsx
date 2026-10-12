@@ -24,9 +24,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { TaskButton } from '../components/TaskButton'
 import { TaskPanel } from '../components/TaskPanel'
+import { StatusToastCard } from '../components/StatusToast'
 import { useHostData } from '../hooks/use-host-data'
 import { useCapsuleDrag } from '../hooks/use-capsule-drag'
 import { usePanelGeometry } from '../hooks/use-panel-geometry'
+import { useStatusToasts } from '../hooks/use-status-toasts'
+import { useToastSide } from '../hooks/use-toast-side'
 import {
   buildViewModel,
   type SessionRowLike,
@@ -88,7 +91,11 @@ export function TaskPulseOverlay(props: TaskPulseOverlayProps): ReactElement {
     return out
   }, [ids, byId])
 
-  // ---- 第二路：宿主半边快照（面板收起时暂停轮询，进一步降低打扰） ----
+  // ---- 第二路：宿主半边快照 ----
+  // 收起态**不再暂停**轮询（需求 m04869）：提示弹窗要在胶囊态发现状态变迁，
+  // 而 ERROR / BLOCKED 这类结论只存在于宿主半边的会话事件里，
+  // 浏览器半边的 running / pendingInteraction 看不到它们。
+  // 收起时改用更长的间隔（见 use-host-data.ts）以控制开销。
   const { snapshot, history, refresh } = useHostData(expanded)
 
   const view = useMemo(
@@ -104,6 +111,21 @@ export function TaskPulseOverlay(props: TaskPulseOverlayProps): ReactElement {
     [snapshot, sessions, statuses, workspaceItems, archivedSessionIds, history]
   )
 
+  // ---- 状态变迁提示：只在胶囊态弹出，5 秒后自动消失（需求 m04869） ----
+  const { toasts, dismiss, dismissOne } = useStatusToasts(view.tasks, !expanded)
+  const toastSide = useToastSide(rootRef, toasts.length > 0)
+
+  /** 点提示 = 展开面板并直接进这条对话的详情（提示唯一的用法）。 */
+  const [pendingSelect, setPendingSelect] = useState<string | null>(null)
+  const openSession = useCallback(
+    (sessionId: string) => {
+      setPendingSelect(sessionId)
+      setExpanded(true)
+      dismiss()
+    },
+    [dismiss]
+  )
+
   // ---- 相对时间 / 运行耗时每秒刷新（不改动任何数据源） ----
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -115,10 +137,16 @@ export function TaskPulseOverlay(props: TaskPulseOverlayProps): ReactElement {
     if (!expanded) return undefined
     const onPointerDown = (event: MouseEvent) => {
       const node = rootRef.current
-      if (node !== null && !node.contains(event.target as Node)) setExpanded(false)
+      if (node !== null && !node.contains(event.target as Node)) {
+        setPendingSelect(null)
+        setExpanded(false)
+      }
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setExpanded(false)
+      if (event.key === 'Escape') {
+        setPendingSelect(null)
+        setExpanded(false)
+      }
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
@@ -128,8 +156,16 @@ export function TaskPulseOverlay(props: TaskPulseOverlayProps): ReactElement {
     }
   }, [expanded])
 
-  const toggle = useCallback(() => setExpanded((value) => !value), [])
-  const close = useCallback(() => setExpanded(false), [])
+  const toggle = useCallback(() => {
+    // 手动开合面板一律回到列表视图：`pendingSelect` 只该由「点提示」设置，
+    // 否则上一次点提示留下的选中项会在下次展开时突兀地弹出详情。
+    setPendingSelect(null)
+    setExpanded((value) => !value)
+  }, [])
+  const close = useCallback(() => {
+    setPendingSelect(null)
+    setExpanded(false)
+  }, [])
 
   // ---- 胶囊拖动：收起态可拖，展开态不接管（避免与面板滚动冲突） ----
   const drag = useCapsuleDrag({ rootRef, enabled: !expanded })
@@ -148,6 +184,24 @@ export function TaskPulseOverlay(props: TaskPulseOverlayProps): ReactElement {
 
   return (
     <div className="tp-root" ref={rootRef} style={drag.style} data-dragging={drag.dragging || undefined}>
+      {/*
+        状态变迁提示（需求 m04869）：只在胶囊态出现，5 秒后自动消失。
+        贴在胶囊上方或下方由 toast-geometry 按实时位置算出；
+        水平用 `left` 相对偏移 —— 之后再拖胶囊时提示会自己跟着走。
+      */}
+      {!expanded && toasts.length > 0 && (
+        <div
+          className="tp-toasts"
+          data-side={toastSide.side}
+          style={{ left: toastSide.left }}
+          role="status"
+          aria-live="polite"
+        >
+          {toasts.map((toast) => (
+            <StatusToastCard key={toast.id} toast={toast} onOpen={openSession} onDismiss={dismissOne} />
+          ))}
+        </div>
+      )}
       <TaskButton
         count={view.stats.total}
         stats={view.stats}
@@ -167,6 +221,10 @@ export function TaskPulseOverlay(props: TaskPulseOverlayProps): ReactElement {
           hostOnline={view.hostOnline}
           onClose={close}
           onRefresh={refresh}
+          // onOpenSession 刻意不传：插件只读，不代用户跳转或确认；
+          // ConfirmCard 因此显示「请在对应会话中处理」的只读提示。
+          selected={pendingSelect}
+          onSelect={setPendingSelect}
         />
       )}
     </div>

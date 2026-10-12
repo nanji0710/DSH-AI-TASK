@@ -385,6 +385,43 @@ interface HistoryItem { id; sessionId; workspaceId; workspaceName; title; status
 `TaskStore` 持有的 `Map<sessionId, TaskRecord>`，并由 `TaskService.getWorkspaces()` 按 `workspaceId`
 聚合出 `WorkspaceGroupView[]`（含状态计数）。扁平 Map + 派生分组比嵌套树更快，且天然避免环形引用。
 
+### 4.4 状态变迁提示（1.5.0，需求 m04869）
+
+「任务新进入一个状态就弹提示」这条需求**不引入任何新的数据源** —— 它是
+`TaskDetail.status` 在时间轴上的**派生视图**。全部逻辑落在
+`src/models/status-transition.ts`（纯函数，零依赖）与
+`src/hooks/use-status-toasts.ts`（把纯函数接到 React 上）。
+
+```ts
+// 变迁侦测：拿一份长期存活的状态账本逐次比对
+type StatusLedger = Map<string, TaskStatus>
+interface StatusTransition { sessionId: string; title: string; from: TaskStatus | undefined; to: TaskStatus; at: number }
+interface StatusToast extends StatusTransition { id: string }
+
+function diffStatuses(ledger: StatusLedger, tasks: readonly TaskDetail[], at?: number): StatusTransition[]
+function admitTransitions(transitions: readonly StatusTransition[], capsule: boolean): readonly StatusTransition[]
+function mergeToasts(current: readonly StatusToast[], incoming: readonly StatusTransition[], limit?: number): readonly StatusToast[]
+function pruneToasts(toasts: readonly StatusToast[], now: number, ttl?: number): readonly StatusToast[]
+```
+
+| 规则 | 取值 | 理由 |
+|---|---|---|
+| 触发时机 | 每次 `tasks` 变化（面板展开态 2s / 胶囊态 5s 轮询，或标准 props 变化） | 不需新增订阅：状态本来就是这两路合并的结果 |
+| 只提示哪些状态 | `TOAST_STATUSES = [WAIT_CONFIRM, SUCCESS, ERROR, BLOCKED]` | **刻意不含 `RUNNING` / `START`** —— 每轮对话开始、每次工具调用都会回到 `RUNNING`，提示它等于给每个动作弹窗 |
+| 首次观测 | 只记账、不提示 | 插件刚加载时不该把已有的状态重播一遍 |
+| 任务消失 | 只清账本 | 归档 / 删除不是状态变迁 |
+| 重新出现 | 按首次观测处理 | 宁可少提示，也不补报陈旧变迁 |
+| 胶囊态判定 | `useStatusToasts(view.tasks, !expanded)` | 需求原话：「**如果当前处于胶囊状态**」。面板展开时状态变化就在眼前的列表里，再弹一条只会遮挡内容 |
+| 展开态是丢弃还是排队 | **丢弃**（`admitTransitions(t, false) === []`） | 排队会让用户收起面板时一次性炸出一批已经过时的提示 |
+| 存活时长 | `TOAST_TTL_MS = 5000` | 需求：5 秒后自动消失。按**时间戳**判定而非序号 —— 同会话提示被替换时会续期，序号计数会让它提前消失 |
+| 队列上限 | `TOAST_LIMIT = 3` | 批量收尾时不至于刷满屏幕 |
+| 同会话重复进入同一状态 | 替换并续期 | 不堆成一摞 |
+| 贴哪一侧 | `placeToast({ capsule, overlay })` → `{ side, left }` | 胶囊可拖到窗口任意位置（m01719），上下哪侧有空间必须算出来；`left` 是**相对胶囊左缘**的偏移，因此再拖胶囊时提示自动跟随 |
+
+按时间戳判定还带来一个实现上的好处：5 秒这个数字只存在于
+`TOAST_TTL_MS` 一个常量里，测试用假时钟卡在 `4999ms` 与 `5000ms` 两点断言即可，
+不需要在界面上掐秒表（见 `test/toast.test.mjs`）。
+
 ### 4.3 状态机（规范 4）
 
 ```
@@ -458,9 +495,16 @@ running === true           →  RUNNING
 5. 工作区计数以实际任务重算；工作区标题的会话数取侧栏口径
    （`sessionIds` 扣除 `archivedSessionIds`）。
 
-轮询策略（`src/hooks/use-host-data.ts`）：**面板展开时 2s，收起时完全暂停**；页面不可见降频至 30s。
+轮询策略（`src/hooks/use-host-data.ts`）：**面板展开时 2s、胶囊态 5s、页面不可见 30s**。
 选择轮询而非 SSE 的理由：本插件的实时性需求是「秒级」，每次请求都是 KB 级 JSON，
 轮询无长连接泄漏风险，且更符合「不干扰主对话」原则。
+
+> **收起态为何不再暂停（1.5.0 起）**：需求 m04869 要求「胶囊态也能发现状态变迁」，
+> 而 `异常 / 阻塞` 这类结论只存在于**宿主半边**的会话事件流里
+> （浏览器半边的 `pendingInteraction` / `running` 看不到它们）。
+> 收起时若完全不取数，就等于「你不在看的时候发生的事永远不会被提示」。
+> 因此收起态改为 5s 低频取数 —— 5s 与提示自身的存活时长（5s）同量级，
+> 最坏情况下变迁晚 5 秒被看到，随后仍能完整显示 5 秒。
 
 ### 5.2 事件流（规范 5 硬性链路）
 
@@ -551,4 +595,4 @@ ctx.on('api-session/*')    event-service.ts      task-store.ts      → React �
 | 插槽标准 props 类型 | `src/store/inject-types.ts` |
 | 样式注入 | `src/styles/taskpulse-css.ts` |
 | bundle 包装 | `scripts/build-client.mjs` |
-| 契约自检 | `test/models.test.mjs`、`test/drag.test.mjs`、`test/panel.test.mjs`、`test/store.test.mjs`、`test/taskflow.test.mjs`、`test/components.test.mjs`、`test/bundle.test.mjs`（`scripts/run-all-tests.mjs` 汇总，共 103 项断言） |
+| 契约自检 | `test/models.test.mjs`、`test/drag.test.mjs`、`test/panel.test.mjs`、`test/toast.test.mjs`、`test/store.test.mjs`、`test/taskflow.test.mjs`、`test/components.test.mjs`、`test/bundle.test.mjs`（`scripts/run-all-tests.mjs` 汇总，共 137 项断言） |

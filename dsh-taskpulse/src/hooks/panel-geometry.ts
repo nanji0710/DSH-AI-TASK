@@ -110,7 +110,18 @@ export function clampToBounds(value: number, max: number): number {
  * `left: NaNpx` —— 浏览器直接丢弃该声明，面板回到 CSS 默认位置（左上角），
  * 看起来就是「面板莫名跑掉了」。宁可退化成 0 也不要产生非法样式。
  */
-function finite(value: number, fallback = 0): number {
+/**
+ * 把可能不可用的数值收敛到安全值。
+ *
+ * `getBoundingClientRect()` 在元素被卸载、或处在 `display: none` 祖先下会返回
+ * 全 0 矩形；某些测量失败路径还会给出 NaN。NaN 一旦进入 `left` 计算，
+ * 内联样式 `left: NaNpx` 会被浏览器整条丢弃 —— 面板于是回到 CSS 默认位置，
+ * 看起来就是「面板莫名跑掉了」。
+ *
+ * 导出给 toast-geometry 复用：两类元素（面板、提示弹窗）必须遵守同一套
+ * 数值兜底规则，否则总有一类在边界上出问题。
+ */
+export function finite(value: number, fallback = 0): number {
   return Number.isFinite(value) ? value : fallback
 }
 

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 
-const suites = ['models', 'drag', 'panel', 'store', 'taskflow', 'components', 'bundle']
+const suites = ['models', 'drag', 'panel', 'toast', 'store', 'taskflow', 'components', 'bundle']
 let total = 0
 
 for (const suite of suites) {

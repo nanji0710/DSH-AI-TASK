@@ -1,6 +1,6 @@
 {
   "name": "dsh-taskpulse",
-  "version": "1.0.0",
+  "version": "1.5.0",
   "description": "DSH TaskPulse —— 在 DSH 右上角实时展示当前正在执行的任务（多工作区 / 多会话 / 多 Agent 状态监控中心）",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -49,6 +49,7 @@
     "test:models": "node test/models.test.mjs",
     "test:drag": "node test/drag.test.mjs",
     "test:panel": "node test/panel.test.mjs",
+    "test:toast": "node test/toast.test.mjs",
     "test:store": "node test/store.test.mjs",
     "test:taskflow": "node test/taskflow.test.mjs",
     "test:components": "node test/components.test.mjs",

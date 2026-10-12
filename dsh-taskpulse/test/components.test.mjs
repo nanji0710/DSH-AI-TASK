@@ -32,7 +32,8 @@ await build({
     'src/components/TaskCard.tsx',
     'src/components/WorkspaceGroup.tsx',
     'src/components/TaskDetail.tsx',
-    'src/components/TaskPanel.tsx'
+    'src/components/TaskPanel.tsx',
+    'src/components/StatusToast.tsx'
   ],
   bundle: true,
   outdir,
@@ -49,6 +50,7 @@ const { TaskCard } = require(join(outdir, 'TaskCard.cjs'))
 const { WorkspaceGroup } = require(join(outdir, 'WorkspaceGroup.cjs'))
 const { TaskDetailView } = require(join(outdir, 'TaskDetail.cjs'))
 const { TaskPanel, matchesFilter, TASK_FILTER_LABEL } = require(join(outdir, 'TaskPanel.cjs'))
+const { StatusToastCard } = require(join(outdir, 'StatusToast.cjs'))
 const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
 
@@ -365,6 +367,69 @@ check('TaskPanel 接受 panelStyle 并施加到面板根元素', () => {
   const html = render(TaskPanel, panelProps({ panelStyle: { top: -608, left: -240, maxHeight: 596 } }))
   assert.ok(/style="[^"]*top:\s*-608px/.test(html), `面板应施加注入的 top，实际：${html.slice(0, 300)}`)
   assert.ok(/max-height:\s*596px/.test(html), '面板应施加注入的高度上限')
+})
+
+// ---- 8. 状态变迁提示的卡片（需求 m04869） ----
+// 需求要的是「弹出一个提示弹窗」，所以这里断言的是渲染出来的东西：
+// 标题写的是哪条对话、说明写的是哪种变迁、点上去是否能跳。
+check('StatusToastCard 渲染对话标题与变迁说明', () => {
+  const html = render(StatusToastCard, {
+    toast: {
+      id: 't1',
+      sessionId: 's1',
+      title: '对话 A',
+      from: 'RUNNING',
+      to: 'WAIT_CONFIRM',
+      at: Date.now()
+    },
+    onOpen: () => {},
+    onDismiss: () => {}
+  })
+  assert.ok(html.includes('对话 A'), '应显示对话标题')
+  assert.ok(html.includes('由「进行中」变为「待确认」'), `应显示变迁说明，实际：${html}`)
+})
+
+check('提示用状态色表着色（与 StatusBadge 同色，颜色才有意义）', () => {
+  const withTone = (to) =>
+    render(StatusToastCard, {
+      toast: { id: 't', sessionId: 's', title: 'x', from: 'RUNNING', to, at: 0 }
+    })
+  assert.ok(withTone('WAIT_CONFIRM').includes('data-tone="yellow"'))
+  assert.ok(withTone('SUCCESS').includes('data-tone="green"'))
+  assert.ok(withTone('ERROR').includes('data-tone="red"'))
+  assert.ok(withTone('BLOCKED').includes('data-tone="orange"'))
+})
+
+check('提示可点开（有 onOpen）且带 ✕ 可单独关闭', () => {
+  const props = {
+    toast: { id: 't1', sessionId: 's1', title: '对话 A', from: 'RUNNING', to: 'ERROR', at: 0 },
+    onOpen: () => {},
+    onDismiss: () => {}
+  }
+  const html = render(StatusToastCard, props)
+  assert.ok(html.includes('role="button"'), '可点开的提示应是按钮语义')
+  assert.ok(html.includes('tp-toast-close'), '应有单独关闭按钮')
+  assert.ok(html.includes('aria-label="关闭「异常」提示"'), `关闭按钮应有可读标签，实际：${html}`)
+})
+
+check('没有 onOpen 时退化为纯通知（不做成能点却没反应的样子）', () => {
+  const html = render(StatusToastCard, {
+    toast: { id: 't1', sessionId: 's1', title: '对话 A', from: 'RUNNING', to: 'SUCCESS', at: 0 }
+  })
+  assert.ok(html.includes('role="status"'), '不可点开时应是 status 语义')
+  assert.ok(!html.includes('role="button"'), '不应伪装成按钮')
+})
+
+check('提示挂在胶囊态才渲染的位置（源码级：受 !expanded 与 toasts.length 双重守卫）', () => {
+  const source = readFileSync(join(process.cwd(), 'src', 'client', 'index.tsx'), 'utf8')
+  assert.ok(
+    /\{!expanded && toasts\.length > 0 && \(/.test(source),
+    '提示容器必须同时受「胶囊态」与「有提示」两个条件守卫'
+  )
+  assert.ok(
+    /useStatusToasts\(view\.tasks, !expanded\)/.test(source),
+    '胶囊态判定必须由 !expanded 传入（需求：如果当前处于胶囊状态）'
+  )
 })
 
 rmSync(outdir, { recursive: true, force: true })
