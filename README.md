@@ -1,263 +1,259 @@
 # DSH TaskPulse
 
-[中文文档](README.zh.md) · **English**
+**中文** · [English](README.en.md)
 
-A DSH (DeepSeek Harness) plugin that shows **what the AI is working on right
-now** in a floating panel at the top-right corner of the DSH window — a
-multi-workspace, multi-conversation, multi-agent status monitor.
+一个 DSH（DeepSeek Harness）插件：在 DSH 窗口右上角以浮窗展示**当前正在执行的 AI 任务** ——
+一个多工作区、多会话、多 Agent 的状态监控中心。
 
-- Plugin name: `dsh-taskpulse`
-- Version: `1.5.0`
-- Target DSH: `0.2.0-rc.2`
-- License: MIT
-
----
-
-## Features
-
-| Feature | Description |
+| 项 | 值 |
 |---|---|
-| Top-right capsule | A `120×32` glass capsule showing the live active-task count. Click to expand a `360×600` panel. |
-| Draggable capsule | While collapsed, drag the capsule anywhere inside the DSH window. The position is clamped to the window bounds and remembered across sessions. |
-| Status-change toast | While collapsed, a small toast pops above or below the capsule whenever a task newly enters `待确认 / 已达成 / 异常 / 阻塞`, naming the conversation and the transition (`由「进行中」变为「待确认」`). It fades out by itself after **5 seconds**, can be clicked to open that conversation's detail, or dismissed early with `✕`. Which side it appears on is computed from the capsule's live position, so it is never clipped. |
-| Adaptive panel placement | The panel is positioned from the capsule's live location: it flips above the capsule in the lower half of the window, shifts back inside when the capsule hugs an edge, and caps its height when neither side fits — so it is never clipped, wherever the capsule was dragged. |
-| Never covers chat | Mounted on DSH's official `shell.overlay` slot, whose layer is click-through; only the capsule and panel accept pointer events. |
-| Per-workspace grouping | Tasks are grouped by DSH workspace with inline status counters, e.g. `🟦2运行 🟡1确认`. |
-| Status-only list | Cards show the current status, current step and agent; the tool-call stream stays in the detail view. |
-| Status filter | The status counters double as filter buttons: click `🔴 异常 1` to see errors only, **click the same pill again** to return to all. The row holds nothing but the status pills — no "全部" button is appended — and always stays on one line. |
-| Six-state model | `待开始 / 进行中 / 待确认 / 已达成 / 异常 / 阻塞`, colour-coded blue / yellow / green / red / orange. `待确认` covers **both** ways DSH waits for you: tool approvals and `ask_user_question` / plan review. |
-| Confirmation centre | Surfaces everything that is waiting on you — tool approvals **and** questions the AI asked (`ask_user_question`, plan review) — with the AI's suggestion or the question text, so you can jump to the conversation and answer. Rendered inside the task detail view. |
-| History | Tasks idle for more than 24 hours move out of the active list and are persisted to disk (archiving ignores status — a `RUNNING` task silent for a day is in fact dead). |
-| Sidebar-aligned counts | Each workspace header reports the session count the DSH sidebar shows (registered `sessionIds` − archived). |
-| Read-only | The plugin never edits your content and never acts on your behalf. |
+| 插件名 | `dsh-taskpulse` |
+| 版本 | `2.0.0` |
+| 目标 DSH | `0.2.0-rc.2` |
+| 许可 | MIT |
 
 ---
 
-## Installation
+## 简介
 
-Install into a DSH profile from a local checkout:
+DSH 里同时开着好几个工作区、每个工作区又有好几条对话时，「哪个在跑、跑到哪一步、
+哪个卡住了」很难一眼看清。TaskPulse 把这些状态收拢到右上角一个胶囊里：
+不点开时只是一个带计数的入口，点开后是一块按工作区分组、带状态色和时间线的任务面板。
+
+设计上遵守两条硬线：
+
+1. **不干扰主对话** —— 浮窗挂在 DSH 官方的 `shell.overlay` 层上，该层本身点击穿透，
+   只有胶囊与面板接管鼠标事件，因此**永远不会遮挡聊天区**。
+2. **只读** —— 插件不修改用户内容、不代替用户执行任何操作（详见「权限边界」）。
+
+---
+
+## 特性
+
+| 特性 | 说明 |
+|---|---|
+| 右上角胶囊入口 | `120×32` 半透明玻璃胶囊，实时显示活跃任务数；点击展开 `360×600` 面板。 |
+| 胶囊可拖动 | 收起状态下可拖到 DSH 窗口内任意位置，越界自动钳制在窗口内，位置持久化。 |
+| 状态变迁提示 | 收起状态下，任务新进入 `待确认 / 已达成 / 异常 / 阻塞` 时，胶囊上方或下方弹出一条小提示，写明是哪条对话、`由「进行中」变为「待确认」`；**5 秒后自动消失**。点提示可直接打开该对话详情，点 `✕` 可单独关掉。贴哪一侧由胶囊实时位置算出，不会被窗口裁掉。 |
+| 面板自适应定位 | 面板按胶囊实时位置决定展开方向：下半屏时翻到胶囊上方，贴边时平移回窗口内，两侧都放不下时压缩高度 —— 无论胶囊拖到哪都不会被窗口裁掉。 |
+| 不遮挡聊天区 | 挂载在官方 `shell.overlay` 插槽，层点击穿透，仅胶囊与面板接收事件。 |
+| 按工作区分组 | 任务按 DSH 工作区分组，组头带状态计数，如 `🟦2运行 🟡1确认`。 |
+| 列表只看状态与步骤 | 卡片只展示当前状态、当前步骤与 Agent；工具调用的执行流水留在详情视图。 |
+| 状态筛选 | 顶部的状态统计胶囊本身就是筛选按钮：点 `🔴 异常 1` 只看异常，**再点同一枚**回到全部。这一排只有状态胶囊，不会追加「全部」按钮；始终同一行，不换行。 |
+| 六状态模型 | `待开始 / 进行中 / 待确认 / 已达成 / 异常 / 阻塞`，对应蓝 / 黄 / 绿 / 红 / 橙。「待确认」覆盖 DSH **两种**等人方式：工具审批与 `ask_user_question` / 计划审批。 |
+| 确认中心 | 汇总所有在等你的事 —— 工具审批**和** AI 的提问（`ask_user_question`、计划审批），展示 AI 建议或提问原文，一键跳回原对话处理；在任务详情视图内呈现。 |
+| 历史归档 | 超过 24 小时无新操作的任务移出活跃列表并落盘持久化（归档不看状态：静默一整天的「运行中」事实上已死）。 |
+| 会话数对齐侧栏 | 工作区标题里的会话数＝侧栏可见数（已注册 `sessionIds` − 归档）。 |
+| 只读 | 不修改用户内容，不自动执行操作。 |
+
+---
+
+## 安装
+
+从本地检出安装到某个 DSH profile：
 
 ```bash
 npm install
 npm run build
 
-dsh plugin --profile <profile-name> add <path-to-this-repo>
+dsh plugin --profile <profile-name> add <本仓库路径>
 ```
 
-The command records a `link:` dependency in the profile's `package.json` and
-registers the plugin in `dsh.profile.bundles`.
+该命令会在 profile 的 `package.json` 中写入 `link:` 依赖，并把插件登记进
+`dsh.profile.bundles`。
 
-> **Restart DSH after installing.** The browser-half bundle is composed once at
-> startup, so the panel will not appear until DSH is restarted.
+> **安装后必须重启 DSH。** 浏览器半边的 bundle 只在启动时组合一次，
+> 不重启界面上不会出现浮窗。
 
 ---
 
-## Usage
+## 使用
 
-1. Restart DSH. A capsule labelled `AI任务 <n>` appears at the top-right corner,
-   where `<n>` is the number of active tasks.
-2. **Click** the capsule to expand the task panel.
-3. **Drag** the capsule (while collapsed) to reposition it. Positions are kept
-   inside the window automatically and restored on the next launch.
-4. The panel body is the active task list, grouped by workspace. The statistics
-   row above it **is** the status filter: click `🔴 异常 1` to see only failures,
-   click it again to go back to all.
-5. Press `Esc`, click outside, or press `✕` to collapse the panel.
-6. **Leave it collapsed** and it will keep working for you: a small toast pops next
-   to the capsule whenever a task newly reaches a state worth knowing about
-   (`待确认 / 已达成 / 异常 / 阻塞`), then disappears on its own after 5 seconds.
-   Click the toast to jump straight into that conversation's detail; click `✕`
-   on the toast to dismiss just that one.
+1. 重启 DSH 后，右上角出现 `AI任务 <n>` 胶囊，`<n>` 是当前活跃任务数。
+2. **点击**胶囊展开任务面板。
+3. **拖动**胶囊（收起状态）可改变位置；位置会自动限制在窗口内，下次启动仍然生效。
+4. 面板体就是按工作区分组的活跃任务列表；上方那排状态统计胶囊**本身就是筛选器**——
+   点 `🔴 异常 1` 只看异常，再点一次回到全部。
+5. 按 `Esc`、点击面板外、或点 `✕` 收起面板。
+6. **收起之后它照样替你盯着**：任务新到达值得关注的状态
+   （`待确认 / 已达成 / 异常 / 阻塞`）时，胶囊旁边会冒出一条小提示，5 秒后自己消失。
+   点提示可直接跳到那条对话的详情；点提示上的 `✕` 只关掉这一条。
 
-Each task card answers exactly two questions: **what state is this conversation
-in**, and **which step is it on**. Execution detail (tool calls, subagent
-spawns, full timeline) lives in the detail view you reach by clicking a card.
+每张任务卡片只回答两个问题：**这条对话现在处于什么状态**、**正在做哪一步**。
+执行流水（工具调用、子代理派生、完整时间线）属于详情视图，点开卡片即可看到。
 
 ---
 
-## Architecture
+## 架构
 
-DSH plugins have two halves that run in different processes and communicate over
-an explicit channel.
+DSH 插件是**双半边**结构，两半边运行在不同进程，通过明确的通道通信：
 
 ```
-┌──────────────────────── DSH host process (Node) ────────────────────────┐
-│  session event stream        cordis events        host services         │
-│  turn/start …                api-session/*        sessions, agents, …   │
-│         └──────────┬───────────────┘                                     │
-│                    ▼                                                     │
-│   EventService → TaskStore → TaskService → BridgeService                 │
-│                    connection.fetch.register('/api/dsh-taskpulse/*')     │
-└──────────────────────────────┬───────────────────────────────────────────┘
-                               │ same-origin HTTP (read-only GET, JSON)
-┌──────────────────────────────▼───────────────────────────────────────────┐
-│                     DSH web GUI (browser)                                │
-│   slot standard props  +  host snapshot   →  TaskPulseOverlay            │
-│   shell.overlay (list, scope=root)        →  top-right floating panel    │
-└──────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────── DSH 宿主进程（Node） ───────────────────────────┐
+│  会话事件流                  cordis 事件            宿主服务             │
+│  turn/start …                api-session/*          sessions, agents …  │
+│         └──────────┬───────────────┘                                    │
+│                    ▼                                                    │
+│   EventService → TaskStore → TaskService → BridgeService                │
+│                    connection.fetch.register('/api/dsh-taskpulse/*')    │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │ 同源 HTTP（只读 GET，JSON）
+┌──────────────────────────────▼──────────────────────────────────────────┐
+│                     DSH Web GUI（浏览器）                                │
+│   插槽标准 props  +  宿主快照   →   TaskPulseOverlay                     │
+│   shell.overlay (list, scope=root)  →   右上角浮窗                       │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Host half** — `src/index.ts`, a Cordis plugin with
-`inject = ['workspaceRegistry', 'sessions']`. It subscribes to the real DSH
-event stream (`session/event`) and folds events into task state, then exposes
-three read-only GET endpoints via `connection.fetch.register`:
+### 宿主半边
 
-| Endpoint | Purpose |
+`src/index.ts`，Cordis 插件，`inject = ['workspaceRegistry', 'sessions']`。
+订阅 DSH 真实的会话事件流（`session/event` 等），把事件折叠成任务状态，
+再通过 `connection.fetch.register` 暴露三个**只读** GET 端点：
+
+| 端点 | 用途 |
 |---|---|
-| `/api/dsh-taskpulse/snapshot` | active tasks, workspace groups, counters, pending confirmations |
-| `/api/dsh-taskpulse/history` | archived tasks |
-| `/api/dsh-taskpulse/ping` | readiness probe |
+| `/api/dsh-taskpulse/snapshot` | 活跃任务、工作区分组、状态计数、待确认事项 |
+| `/api/dsh-taskpulse/history` | 已归档任务 |
+| `/api/dsh-taskpulse/ping` | 就绪探测 |
 
-**Browser half** — `src/client/index.tsx`, a Cordis plugin with
-`inject = ['slots']`. It registers an entry into the `shell.overlay` slot and
-merges two sources:
+### 浏览器半边
 
-1. **Root standard props** (`useSessions`, `useSessionStatus`, `useWorkspaces`)
-   contributed by DSH's own UI packages — zero-latency, authoritative run state.
-2. **The host snapshot** — supplies what the browser half cannot see, such as the
-   timeline, current step and `异常 / 阻塞` outcomes, which exist only in the
-   host-side event stream.
+`src/client/index.tsx`，Cordis 插件，`inject = ['slots']`。
+向 `shell.overlay` 插槽注册一个条目，并把两路数据合并：
 
-The host snapshot is polled at **2 s** while the panel is expanded, **5 s** while
-collapsed (fast enough to feed the status-change toasts), and **30 s** while the
-page is in the background.
+1. **插槽标准 props**（`useSessions` / `useSessionStatus` / `useWorkspaces`）——
+   由 DSH 官方 UI 包提供，零延迟、权威的运行态；
+2. **宿主快照** —— 补充浏览器半边拿不到的信息，如时间线、当前步骤，
+   以及只存在于宿主事件流里的 `异常 / 阻塞` 结论。
 
-A host-side channel is required because DSH's browser-side event bridge is a
-closed whitelist that does not forward session, agent or tool events.
+宿主快照的轮询间隔：面板展开 **2 秒**、胶囊态 **5 秒**（要足够快才能支撑状态变迁提示）、
+页面切到后台 **30 秒**。
 
-Full contract details, including every verified interface and the mapping from
-the spec's event names to DSH's real ones, are in
-[`docs/插件与DSH主程序接口设计.md`](docs/插件与DSH主程序接口设计.md).
+之所以必须自建通道：DSH 浏览器侧的事件桥是**封闭白名单**，不转发
+session / agent / tool 事件。
+
+完整的接口契约（含每一条已确证的接口，以及规范事件名到 DSH 真实事件名的映射）
+见 [`docs/插件与DSH主程序接口设计.md`](docs/插件与DSH主程序接口设计.md)。
 
 ---
 
-## Permissions
+## 权限边界
 
-The plugin is **strictly read-only**, by design.
+插件**严格只读**，这是设计决定，不是实现疏漏。
 
-| Allowed | Forbidden |
+| 允许 | 禁止 |
 |---|---|
-| `workspace.read` | Modifying user content |
-| `conversation.status.read` | Executing actions automatically |
+| `workspace.read` | 修改用户内容 |
+| `conversation.status.read` | 自动执行操作 |
 | `task.read` | — |
 | `timeline.read` | — |
 
-The only write the plugin performs is to its **own** history file at
-`<DSH_HOME>/taskpulse/history.json`.
+插件唯一的写入，是写它**自己**的历史文件 `<DSH_HOME>/taskpulse/history.json`。
 
-Consequently, the confirmation centre's buttons read **「前往会话处理」** (approvals)
-or **「前往会话作答」** (questions) rather than "Approve": they navigate you back
-to the conversation, and you make the decision in DSH's native UI. The plugin
-never approves, rejects or answers on your behalf.
+因此确认中心的按钮是 **「前往会话处理」**（审批）或 **「前往会话作答」**（提问），
+而不是「批准」：它把你带回那条对话，由你在 DSH 原生界面里做决定。
+插件绝不代替你批准、拒绝或作答。
 
 ---
 
-## Two ways DSH waits for you
+## DSH 的两种「在等人」
 
-DSH has two independent "waiting for a human" channels, and a monitor that watches
-only one of them will lie to you half the time:
+DSH 里有两条**互相独立**的等人通道。只盯着其中一条的监控，注定有一半时间在说谎：
 
-| Channel | Triggered by | Host event | Card |
+| 通道 | 由什么触发 | 宿主事件 | 卡片标题 |
 |---|---|---|---|
-| **Approval** | A tool that needs permission | `approval/asked` / `approval/decided` | `等待确认：` |
-| **Question** | `ask_user_question`, `exit_plan_mode` (plan review) | *none* — the host appends nothing | `等待答复：` |
+| **审批** | 需要授权的工具 | `approval/asked` / `approval/decided` | `等待确认：` |
+| **提问** | `ask_user_question`、`exit_plan_mode`（计划审批） | **没有** —— 宿主不追加任何事件 | `等待答复：` |
 
-The question channel is the subtle one: while the agent is blocked on
-`ctx.userQuestions.ask()`, the session log contains nothing but an ordinary
-`tool/call`, so there is no event to react to. TaskPulse therefore treats
-`ask_user_question` / `exit_plan_mode` as blocking tools in its own `tool/call`
-handler, and clears the wait when the matching result arrives
-(`data.message.toolCallId`) or when the host records the reply
-(`user/message` with `source.kind === 'user-question-reply'`).
+提问通道是最容易被漏掉的那条：agent 阻塞在 `ctx.userQuestions.ask()` 期间，
+会话日志里只有一条普普通通的 `tool/call`，根本没有事件可供订阅。
+所以 TaskPulse 在自己的 `tool/call` 处理里把
+`ask_user_question` / `exit_plan_mode` 当作阻塞型工具，
+并在配对的结果到达时（`data.message.toolCallId`）、或宿主记下答复时
+（`source.kind === 'user-question-reply'` 的 `user/message`）解除等待。
 
-The browser half adds a second, zero-latency opinion on top: DSH publishes a
-per-session `pendingInteraction` through `useSessionStatus`, and TaskPulse
-promotes an existing task to 待确认 from it. Read-only "review" cards are
-ignored — a card you can look back at is not a card that is waiting on you.
+浏览器半边在此之上再加一道零延迟的判断：DSH 会通过 `useSessionStatus`
+发布每个会话的 `pendingInteraction`，TaskPulse 据此把已建档的任务提升为「待确认」。
+只读的「回看卡」会被忽略 —— 能回头再看一眼的卡片，不是正在等你处理的卡片。
 
-Approval outcomes are matched against the real vocabulary
-(`allowed-once` is the only grant; `rejected` / `cancelled` / `unavailable` all
-mean the tool did **not** run), so a cancelled approval reads as 阻塞 rather than
-「进行中」.
+审批结论按真实词表匹配（只有 `allowed-once` 是放行，
+`rejected` / `cancelled` / `unavailable` 都意味着工具**没有**执行），
+所以被中止的审批显示为「阻塞」，而不是「进行中」。
 
 ---
 
-## Development
+## 开发
 
 ```bash
 npm install
-npm run build        # host half (tsc) + browser half (esbuild)
-npm run typecheck    # both tsconfigs, no emit
-npm test             # eight suites, 137 assertions
+npm run build        # 宿主半边（tsc）+ 浏览器半边（esbuild）
+npm run typecheck    # 两个 tsconfig，均不产出
+npm test             # 八个套件，137 项断言
 ```
 
-Build output:
+构建产物：
 
-| Artifact | Produced by |
+| 产物 | 由谁产出 |
 |---|---|
 | `dist/index.js` | `tsc -p tsconfig.json` |
-| `dist/client/index.js` | `node scripts/build-client.mjs` (esbuild) |
+| `dist/client/index.js` | `node scripts/build-client.mjs`（esbuild） |
 
-The browser bundle is wrapped in DSH's module-loader form:
+浏览器 bundle 会被包装成 DSH 的模块加载形式：
 
 ```js
 window.__ModuleLoader__.load({ id: 'dsh-taskpulse', factory: (require) => { … } })
 ```
 
-### Source layout
+### 目录结构
 
 ```
 src/
-├── index.ts          # host-half entry (Cordis plugin)
-├── client/index.tsx  # browser-half entry (slot registration)
-├── models/           # shared pure layer — types, state machine, labels
-├── store/            # task store, history store, client-side merge
-├── services/         # event service, task service, HTTP bridge, client API
-├── hooks/            # useHostData (polling), useCapsuleDrag (dragging),
-│                     # usePanelGeometry (placement), panel-geometry (pure math),
-│                     # useStatusToasts + useToastSide, toast-geometry (pure math)
-├── components/       # TaskButton, TaskPanel, WorkspaceGroup, ConversationItem,
-│                     # TaskCard, TaskDetail, StatusBadge, Timeline,
-│                     # ConfirmCard, HistoryCard, StatusToast
-└── styles/           # injected CSS
+├── index.ts          # 宿主半边入口（Cordis 插件）
+├── client/index.tsx  # 浏览器半边入口（插槽注册）
+├── models/           # 共享纯净层 —— 类型、状态机、标签
+├── store/            # 任务 Store、历史 Store、客户端侧合并
+├── services/         # 事件服务、任务服务、HTTP 桥、客户端 API
+├── hooks/            # useHostData（轮询）、useCapsuleDrag（拖动）、
+│                     # usePanelGeometry（面板定位）、panel-geometry（纯几何）、
+│                     # useStatusToasts + useToastSide、toast-geometry（纯几何）
+├── components/       # TaskButton、TaskPanel、WorkspaceGroup、ConversationItem、
+│                     # TaskCard、TaskDetail、StatusBadge、Timeline、
+│                     # ConfirmCard、HistoryCard、StatusToast
+└── styles/           # 注入式 CSS
 ```
 
-The eight components named in the development spec are all present; `ConfirmCard`
-and `HistoryCard` are additional.
+开发规范点名的 8 个组件齐备；`ConfirmCard` 与 `HistoryCard` 为额外补充。
 
-### Tests
+### 测试
 
-| Suite | Assertions | Covers |
+| 套件 | 断言数 | 覆盖内容 |
 |---|---|---|
-| `test/models.test.mjs` | 18 | state machine, counters, archiving, formatting, tool labels |
-| `test/drag.test.mjs` | 13 | capsule drag: clamping, persistence, bounds |
-| `test/panel.test.mjs` | 15 | panel placement: flip above/below, horizontal shift, height cap |
-| `test/toast.test.mjs` | 29 | status-change toasts: transition detection, collapsed-only gating, 5-second expiry, above/below placement |
-| `test/store.test.mjs` | 18 | merge rules: status convergence, archive filtering, workspace ownership, counts |
-| `test/taskflow.test.mjs` | 13 | status flow: question/approval channels, reply fallback, regressions |
-| `test/components.test.mjs` | 23 | rendered output — status/step only, status filter, no duplicate button row, toast card |
-| `test/bundle.test.mjs` | 8 | module-loader contract, externals, slot registration |
+| `test/models.test.mjs` | 18 | 状态机、计数、归档规则、格式化、工具标签 |
+| `test/drag.test.mjs` | 13 | 胶囊拖动：边界钳制、持久化、越界回弹 |
+| `test/panel.test.mjs` | 15 | 面板定位：向上/向下展开、横向平移、高度压缩 |
+| `test/toast.test.mjs` | 29 | 状态变迁提示：变迁侦测、仅胶囊态、5 秒到期、上下贴边 |
+| `test/store.test.mjs` | 18 | 双路合并口径：状态收敛、归档剔除、工作区归属、会话数 |
+| `test/taskflow.test.mjs` | 13 | 状态流转：提问/审批两条通道、答复回落、回归保护 |
+| `test/components.test.mjs` | 23 | 渲染结果 —— 列表只显示状态与当前步骤、状态筛选、无重复按钮、提示卡片 |
+| `test/bundle.test.mjs` | 8 | 模块加载契约、external 表、插槽注册 |
 
-137 assertions in total; `node scripts/run-all-tests.mjs` prints the per-suite and
-grand totals.
-
----
-
-## Known limitations
-
-- The browser half may only `require` the nine modules frozen into the page's
-  platform seed table (`react`, `react/jsx-runtime`, `react-dom`,
-  `react-dom/client`, `@deepseek-ai/cordis`, `@deepseek-ai/dsh-client-store`,
-  `@deepseek-ai/dsh-client-ui-slots`, `@deepseek-ai/dsh-client-ui-primitives`,
-  `@deepseek-ai/dsh-client-ui-dockkit`). Any other dependency must be inlined at
-  bundle time.
-- DSH's client slots provide no `useJobs` standard prop, so background jobs are
-  not surfaced.
-- Task state is accumulated from the moment the plugin loads; the deprecated
-  `Session.snapshotEvents()` API is deliberately not used to replay history.
+合计 **137 项断言**；`node scripts/run-all-tests.mjs` 会打印各套件与总计。
 
 ---
 
-## License
+## 已知限制
+
+- 浏览器半边只能 `require` 页面冻结的 9 个 seed 模块（`react`、`react/jsx-runtime`、
+  `react-dom`、`react-dom/client`、`@deepseek-ai/cordis`、`@deepseek-ai/dsh-client-store`、
+  `@deepseek-ai/dsh-client-ui-slots`、`@deepseek-ai/dsh-client-ui-primitives`、
+  `@deepseek-ai/dsh-client-ui-dockkit`）。引入其它依赖必须在打包时内联。
+- DSH 客户端插槽没有 `useJobs` 标准 props，因此后台长任务不在展示范围内。
+- 任务状态从插件加载那一刻开始累积；官方已弃用的 `Session.snapshotEvents()`
+  被刻意回避，不做历史回放。
+
+---
+
+## 许可
 
 [MIT](LICENSE) © 2026 DSH TaskPulse contributors
