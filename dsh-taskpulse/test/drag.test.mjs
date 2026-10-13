@@ -153,4 +153,34 @@ check('窗口尺寸变化时重新钳制，避免胶囊被留在可视区外', (
   assert.ok(/resize/.test(hookSource), 'hook 必须监听 resize 重新钳制')
 })
 
+// ---- 3. 标题栏透传豁免（2.0.0） ----
+// Windows 标题栏整条横带是 -webkit-app-region: drag（宿主 .frame:before），
+// Chromium 把 drag 区域内的鼠标事件全部交给系统移窗，DOM 收不到；
+// 子元素必须显式 no-drag 才能豁免。胶囊拖进标题栏带后若缺这条声明，
+// 点击/拖动会整个透传到下一层（用户报告的失效现场）。
+console.log('标题栏透传豁免：')
+
+const cssSource = readFileSync(join(process.cwd(), 'src', 'styles', 'taskpulse-css.ts'), 'utf8')
+
+/** 取某选择器规则块的声明体（首个 `{` 到配对 `}`，CSS 里没有嵌套块）。 */
+function ruleBody(selector) {
+  const match = cssSource.match(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}'))
+  return match === null ? null : match[1]
+}
+
+for (const selector of ['.tp-root', '.tp-btn', '.tp-panel', '.tp-toasts']) {
+  check(`${selector} 声明 -webkit-app-region: no-drag（标题栏带内可交互）`, () => {
+    const body = ruleBody(selector)
+    assert.ok(body !== null, `缺少 ${selector} 规则块`)
+    assert.ok(/-webkit-app-region:\s*no-drag/.test(body), `${selector} 必须豁免系统移窗拖动区`)
+  })
+}
+
+check('no-drag 豁免恰好覆盖四类浮层（新浮层必须同步补声明）', () => {
+  // 剥掉 /* */ 注释再数，避免文件头说明文字里的属性名被误计入。
+  const css = cssSource.replace(/\/\*[\s\S]*?\*\//g, '')
+  const count = (css.match(/-webkit-app-region:\s*no-drag/g) ?? []).length
+  assert.equal(count, 4, `期望 4 处 no-drag（root/btn/panel/toasts），实际 ${count}`)
+})
+
 console.log(`\n全部 ${passed} 项通过。`)

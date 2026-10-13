@@ -16,7 +16,15 @@ const PLUGIN_ID = 'dsh-taskpulse'
 const TAG_ID = `${PLUGIN_ID}/taskpulse.css`
 
 const CSS = `
+/* ⚠️ 标题栏透传（2.0.0）：Windows 标题栏整条横带是 -webkit-app-region: drag
+   （dsh-client-ui-layout 的 .frame:before）。Chromium 会把 drag 区域内的所有
+   鼠标事件交给系统移窗，DOM 一个都收不到；唯一豁免手段是子元素显式声明
+   -webkit-app-region: no-drag。所以插件的四类可见浮层都要带 no-drag，
+   否则胶囊/面板/提示一被拖进顶部标题栏带就整个失效（点击、拖动全部透传）。
+   位置变量只在 .tp-root 一处，其余三处跟随各自浮层。 */
 .tp-root {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
   position: absolute;
   top: var(--dsh-frame-overlay-top, 20px);
   right: 20px;
@@ -36,6 +44,8 @@ const CSS = `
 
 /* ---------- 默认态入口：120x32 / 圆角 12 / 半透明玻璃 ---------- */
 .tp-btn {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -113,6 +123,8 @@ const CSS = `
  * 上方展开（胶囊在下半屏时），而 flex 布局只能把它往下挤、挤出窗口被裁掉。
  */
 .tp-panel {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
   position: absolute;
   display: flex;
   flex-direction: column;
@@ -307,6 +319,8 @@ const CSS = `
  * 用 data-side 翻转 translateY 的符号，方向感才与位置一致。
  */
 .tp-toasts {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
   position: absolute;
   display: flex;
   flex-direction: column;

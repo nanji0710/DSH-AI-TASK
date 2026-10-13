@@ -1,7 +1,7 @@
 name: dsh-taskpulse
 displayName: AI 任务浮窗
 description: 在 DSH 右上角常驻「AI任务」浮窗，实时汇总各工作区、会话与 Agent 任务的执行状态
-version: 0.1.0
+version: 2.0.0
 author: DSH-AI-TASK
 icon: ./icon.svg
 client:
