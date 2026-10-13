@@ -169,7 +169,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
           </div>
         )
       : (
-          <TaskListView workspaces={workspaces} tasks={visibleTasks} now={now} onSelect={setSelected} />
+          <TaskListView workspaces={workspaces} tasks={visibleTasks} now={now} onSelect={setSelected} filtered={filter !== 'all'} />
         )
 
   return (
@@ -250,12 +250,15 @@ function TaskListView({
   workspaces,
   tasks,
   now,
-  onSelect
+  onSelect,
+  filtered = false
 }: {
   workspaces: WorkspaceGroupView[]
   tasks: TaskDetail[]
   now: number
   onSelect: (sessionId: string) => void
+  /** 筛选态（filter !== 'all'）下，某工作区没有命中任务就整组不显示。 */
+  filtered?: boolean
 }): ReactElement {
   if (tasks.length === 0) {
     return (
@@ -281,7 +284,11 @@ function TaskListView({
   const groups: ReactElement[] = []
   for (const workspace of workspaces) {
     const items = byWorkspace.get(workspace.id) ?? []
-    if (items.length === 0 && workspace.conversationCount === 0) continue
+    // 筛选态：`tasks` 已经是筛过的（visibleTasks），items 为空即该工作区
+    // 在当前筛选下没有任务 —— 整组不渲染，而不是渲染一个「暂无活跃任务」。
+    // all 视图维持原判（items 空且工作区没有会话才跳过），保留空组让用户
+    // 看到工作区仍然存在。
+    if (items.length === 0 && (filtered || workspace.conversationCount === 0)) continue
     rendered.add(workspace.id)
     groups.push(
       <WorkspaceGroup

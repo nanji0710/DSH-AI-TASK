@@ -59,17 +59,33 @@ export class EventService {
     store.setWorkspaceResolver((sessionId) => this.resolveWorkspaceId(sessionId))
 
     // ---- 规范 conversation.created ----
+    // 不在此建档：新建会话（含空白会话）此刻既没在跑也没有任何事件，建档只会
+    // 造出停在 START（「待开始」）的僵尸条目。宿主随后发出的 api-session/added
+    // （带 running 字段）与 session/event 才是可靠的建档时机。
     ctx.on?.(SESSION_CREATED, (session: SessionLike) => {
-      if (session?.id === undefined) return
-      store.ensureTask(session.id, undefined, session)
+      void session
     })
 
     ctx.on?.(API_SESSION_ADDED, (summary: SessionSummaryLike) => {
       const id = summary?.sessionId ?? summary?.id
       if (typeof id !== 'string') return
+      // 子代理会话归入其父会话，不单列（与浏览器半边 `origin === 'subagent'`
+      // 的口径一致）。插件重启时宿主会对全部 live 会话补发 added，若不拦住，
+      // 每个已跑完的子代理都会得到一条停在 START 的「待开始」僵尸卡
+      // ——三任务显示异常的**直接现场**（b8a41501 / b925d768 / 7be4ac9d，
+      // 全部 origin=subagent、父会话 session-2c6b93e3）。
       const session = safeSession(ctx, id)
-      store.ensureTask(id, summary?.title, session)
-      if (summary?.running === true) store.applyRunning(id, true, session)
+      if (readSessionOrigin(session) === 'subagent') return
+      if (summary?.running === true) {
+        store.ensureTask(id, summary?.title, session)
+        store.applyRunning(id, true, session)
+      } else {
+        // 非 running 的 added：只收敛既有记录，**绝不建档**。宿主对从未运行过的
+        // 会话不会补发 status(false)，若在此建档，记录会永远停在 START（「待开始」）
+        // ——三任务显示异常的第一成因。applyIdle 不建档，只把滞留的 START/RUNNING
+        // 收敛为 SUCCESS。
+        store.applyIdle(id)
+      }
     })
 
     // ---- 规范 conversation.updated / agent.progress / tool.called / tool.finished ----
@@ -77,13 +93,17 @@ export class EventService {
     ctx.on?.(SESSION_EVENT, (session: SessionLike, event: SessionEventLike) => {
       const id = session?.id
       if (typeof id !== 'string' || event === undefined || event === null) return
+      // 子代理会话的事件不进入任务归约（同上，归入父会话语义）。
+      if (readSessionOrigin(session) === 'subagent') return
       store.applyEvent(id, event, session)
     })
 
     // ---- 规范 conversation.finished / agent.started / agent.finished ----
     ctx.on?.(API_SESSION_STATUS, (sessionId: unknown, running: unknown) => {
       if (typeof sessionId !== 'string') return
-      store.applyRunning(sessionId, running === true, safeSession(ctx, sessionId))
+      const session = safeSession(ctx, sessionId)
+      if (readSessionOrigin(session) === 'subagent') return
+      store.applyRunning(sessionId, running === true, session)
     })
 
     // 宿主 agent 级信号作为兜底（agent.id 与 session.id 在本插件中同键）。
@@ -91,13 +111,17 @@ export class EventService {
       const agent = payload?.agent
       const id = agent?.session?.id ?? agent?.sessionId ?? agent?.id
       if (typeof id !== 'string') return
-      store.applyRunning(id, payload?.status === 'running', agent?.session)
+      const session = agent?.session ?? safeSession(ctx, id)
+      if (readSessionOrigin(session) === 'subagent') return
+      store.applyRunning(id, payload?.status === 'running', session)
     })
 
     // ---- 异常：规范 ERROR 状态 ----
     ctx.on?.(API_SESSION_ERROR, (sessionId: unknown, error: unknown) => {
       if (typeof sessionId !== 'string') return
-      store.applyError(sessionId, error, safeSession(ctx, sessionId))
+      const session = safeSession(ctx, sessionId)
+      if (readSessionOrigin(session) === 'subagent') return
+      store.applyError(sessionId, error, session)
     })
 
     // ---- 会话关闭：规范 conversation.finished（任务落入 History） ----
@@ -182,6 +206,8 @@ export class EventService {
     for (const session of sessions) {
       const id = session?.id
       if (typeof id !== 'string') continue
+      // 子代理会话归入其父会话，不单列。
+      if (readSessionOrigin(session) === 'subagent') continue
       // 只有确认在跑的会话才建档；其余保持沉默，等待它们自己产生事件。
       if (readAgentRunning(ctx, id) !== true) continue
       this.store.ensureTask(id, undefined, session)
@@ -220,6 +246,16 @@ export class EventService {
 function safeSession(ctx: any, id: string): SessionLike | undefined {
   try {
     return ctx.sessions?.get?.(id)
+  } catch {
+    return undefined
+  }
+}
+
+/** 会话来源（`session.origin`）；'subagent' 表示由其他会话派生的子代理。 */
+function readSessionOrigin(session: any): string | undefined {
+  try {
+    const origin = session?.origin
+    return typeof origin === 'string' ? origin : undefined
   } catch {
     return undefined
   }

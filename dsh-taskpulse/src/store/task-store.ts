@@ -186,6 +186,35 @@ export class TaskStore {
         break
       }
       case 'turn/end': {
+        // reason.kind 决定收尾语义：'error' = 本轮以失败告终（LLM 通道错误，
+        // 如 502/429），按 ERROR 落账；'aborted' = 用户主动中止，不算成功
+        // 也不算异常，落 BLOCKED（「需要人来推进」）；completed/缺省 = 正常完成。
+        // 证据链：Aries-AI 会话 2b9b10dc 的 turn 4 于 2026-10-13 10:28:56 以
+        // reason={"kind":"error","code":"SERVER"}（502 fetch failed）收尾，但被
+        // 本分支无条件记成 SUCCESS —— 误判的落点。宿主只在 `agent/error` 时发
+        // `api-session/error`（dsh-api-session-controller/lib/index.js:2887-2889），
+        // turn 级失败不会走那条通道，因此这里必须自带判定。
+        const reason = data.reason
+        const kind = reason?.kind ?? (typeof reason === 'string' ? reason : null)
+        if (kind === 'error') {
+          const message = reason?.error?.message
+            ?? reason?.message
+            ?? '本轮执行异常'
+          task.status = TASK_STATUS.ERROR
+          task.error = summarizeValue(message, 300)
+          task.finishedAt = time
+          task.pendingConfirm = null
+          this.pushTimeline(task, { time, action: '本轮执行异常', detail: task.error, status: 'failed', seq: event.seq })
+          break
+        }
+        if (kind === 'aborted') {
+          task.status = TASK_STATUS.BLOCKED
+          task.error = null
+          task.finishedAt = time
+          task.pendingConfirm = null
+          this.pushTimeline(task, { time, action: '本轮被中止', status: 'failed', seq: event.seq })
+          break
+        }
         task.status = TASK_STATUS.SUCCESS
         task.finishedAt = time
         task.pendingConfirm = null
@@ -358,7 +387,11 @@ export class TaskStore {
         const fromUser = kind === 'user'
         if (fromUser && (task.runStartedAt === null || isTerminal(task.status))) {
           task.runStartedAt = time
-          if (isTerminal(task.status)) {
+          // START 同样要唤醒：它是「建档后尚未观察到任何事件」的初始值，用户此刻
+          // 发来真实消息＝这条对话开始干活。只写起点不翻状态，会让记录永远停在
+          // 「待开始」（turn/start 若因中止/重启而缺席，START 就没有任何出口）——
+          // 三任务显示异常的第二成因。
+          if (task.status !== TASK_STATUS.RUNNING && task.status !== TASK_STATUS.WAIT_CONFIRM) {
             task.status = TASK_STATUS.RUNNING
             task.finishedAt = null
             task.error = null
@@ -425,6 +458,27 @@ export class TaskStore {
       if (task.status === TASK_STATUS.SUCCESS) this.archiveIfDone(task, time)
       this.notify()
     }
+  }
+
+  /**
+   * 会话确认**不在运行**（`api-session/added` 且 `running !== true`）。
+   *
+   * 与 `applyRunning` 的关键差别：**不建档**。宿主只在 agent 状态变迁时发
+   * `api-session/status`，对从未运行过的会话永远不会补发 `status(false)`，
+   * 因此「added + 非 running」是这些会话唯一能被观测到的静止信号 ——
+   * 拿它给既有记录收敛终态（START/RUNNING → SUCCESS），但绝不能反过来
+   * 给一条从没动过的会话新建记录（那会造出永远停在「待开始」的僵尸）。
+   */
+  applyIdle(sessionId: string): void {
+    const task = this.tasks.get(sessionId)
+    if (task === undefined) return
+    if (task.status !== TASK_STATUS.START && task.status !== TASK_STATUS.RUNNING) return
+    const time = this.now()
+    task.status = TASK_STATUS.SUCCESS
+    task.finishedAt = task.finishedAt ?? time
+    task.lastActionTime = time
+    task.progress = deriveProgress(task.status, task.steps)
+    this.notify()
   }
 
   /**

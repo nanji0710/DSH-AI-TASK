@@ -135,6 +135,32 @@ check('空会话与子代理会话依旧不占任务列表', () => {
   assert.deepEqual(result.tasks.map((task) => task.sessionId), ['s-real'])
 })
 
+check('子代理过滤同样作用于宿主快照（三任务僵尸卡的来源）', () => {
+  // 昨天的现场：主会话派生的子代理会话在插件重启时被宿主半边建档（START），
+  // 快照带着它们；useSessions 里 origin=subagent。两条路都必须拦住。
+  const result = view({
+    snapshot: {
+      ok: true,
+      stats: { running: 2, waitConfirm: 0, success: 0, error: 0, blocked: 0, total: 2 },
+      workspaces: [],
+      details: {
+        's-sub-zombie': { sessionId: 's-sub-zombie', status: 'START', lastActionTime: now - HOUR },
+        's-main': { sessionId: 's-main', status: 'RUNNING' }
+      },
+      conversations: [],
+      pending: []
+    },
+    sessions: [
+      row('s-sub-zombie', { origin: 'subagent' }),
+      row('s-main')
+    ],
+    statuses: new Map([['s-main', { running: true }]])
+  })
+  assert.deepEqual(result.tasks.map((task) => task.sessionId), ['s-main'], '子代理卡不得单列')
+  assert.equal(result.stats.total, 1, '统计与列表同口径')
+  assert.equal(result.stats.running, 1)
+})
+
 // ---------------------------------------------------------------- 归档口径
 
 check('归档会话不算活跃任务（侧栏 15 与任务 20 的差额来源）', () => {
@@ -163,6 +189,34 @@ check('归档过滤同样作用于宿主快照里的任务（两条路一致）'
     archivedSessionIds: ['s-archived']
   })
   assert.deepEqual(result.tasks.map((task) => task.sessionId), ['s-live'])
+})
+
+check('快照里的「待开始」按权威运行态收敛：在跑→进行中，不在跑→完成', () => {
+  const snapshot = {
+    ok: true,
+    stats: { running: 2, waitConfirm: 0, success: 0, error: 0, blocked: 0, total: 2 },
+    workspaces: [],
+    details: {
+      // 宿主僵尸记录：建档后从未收到状态迁移事件，停在 START。
+      's-zombie-idle': { sessionId: 's-zombie-idle', status: 'START', lastActionTime: now - HOUR },
+      's-zombie-live': { sessionId: 's-zombie-live', status: 'START', lastActionTime: now - HOUR }
+    },
+    conversations: [],
+    pending: []
+  }
+  const result = view({
+    snapshot,
+    sessions: [row('s-zombie-idle'), row('s-zombie-live')],
+    statuses: new Map([
+      ['s-zombie-idle', { running: false }],
+      ['s-zombie-live', { running: true }]
+    ])
+  })
+  const byId = new Map(result.tasks.map((task) => [task.sessionId, task]))
+  assert.equal(byId.get('s-zombie-idle').status, 'SUCCESS', '不在跑的 START 不得直通 UI')
+  assert.equal(byId.get('s-zombie-live').status, 'RUNNING', '确实在跑的 START 应显示进行中')
+  assert.equal(result.stats.running, 1, '运行计数只算真正在跑的')
+  assert.equal(result.stats.success, 1)
 })
 
 // ---------------------------------------------------------------- 归属口径

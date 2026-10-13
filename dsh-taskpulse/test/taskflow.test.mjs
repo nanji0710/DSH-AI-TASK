@@ -227,6 +227,47 @@ check('turn/end 收尾会清掉残留的挂起项', () => {
   assert.equal(after.pendingConfirm, null)
 })
 
+// ---------------------------------------------------------------- turn/end 收尾语义（Aries-AI 502 误判回归）
+
+check('turn/end reason.kind=error 记为异常并保留错误消息（502 fetch failed）', () => {
+  const store = makeStore()
+  emit(store, 'turn/start', { turn: 4 })
+  const after = emit(store, 'turn/end', {
+    turn: 4,
+    reason: {
+      kind: 'error',
+      error: {
+        message: '502: {"message":"workbuddy upstream server (http 0): transport error: TypeError: fetch failed","type":"server","code":"server"}',
+        code: 'SERVER'
+      }
+    }
+  })
+  assert.equal(after.status, 'ERROR', 'turn 级 LLM 失败不会走 api-session/error，归约必须自带判定')
+  assert.ok(after.error.includes('fetch failed'), '错误摘要应保留原始消息')
+  assert.equal(after.pendingConfirm, null)
+})
+
+check('turn/end reason.kind=aborted 记为阻塞而非成功', () => {
+  const store = makeStore()
+  emit(store, 'turn/start', { turn: 1 })
+  const after = emit(store, 'turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } })
+  assert.equal(after.status, 'BLOCKED')
+})
+
+check('turn/end reason.kind=completed 记为成功（原语义不变）', () => {
+  const store = makeStore()
+  emit(store, 'turn/start', { turn: 2 })
+  const after = emit(store, 'turn/end', { turn: 2, reason: { kind: 'completed' } })
+  assert.equal(after.status, 'SUCCESS')
+})
+
+check('turn/end 无 reason 字段（旧事件形态）仍记为成功', () => {
+  const store = makeStore()
+  emit(store, 'turn/start', { turn: 1 })
+  const after = emit(store, 'turn/end', { turn: 1 })
+  assert.equal(after.status, 'SUCCESS')
+})
+
 check('pendingConfirms() 能把提问通道的挂起项报给浏览器半边', () => {
   const store = makeStore()
   emit(store, 'turn/start', { turn: 1 })
@@ -235,6 +276,38 @@ check('pendingConfirms() 能把提问通道的挂起项报给浏览器半边', (
   assert.equal(pending.length, 1)
   assert.equal(pending[0].sessionId, SESSION)
   assert.equal(pending[0].kind, 'question')
+})
+
+// ---------------------------------------------------------------- 僵尸「待开始」回归（三任务显示异常）
+
+check('applyIdle 把滞留的 START 收敛为 SUCCESS，且不新建记录', () => {
+  const store = makeStore()
+  // 未建档会话收到 added+非 running：不建档（get 为空）。
+  store.applyIdle('ghost-session')
+  assert.equal(store.get('ghost-session'), undefined, '静止信号不得建档')
+  // 僵尸路径：元数据事件建档（不唤醒，状态停在 START），确认静止后收敛。
+  emit(store, 'session/title', { title: '只有元数据的会话' })
+  assert.equal(task(store).status, 'START', '元数据事件不该唤醒状态')
+  store.applyIdle(SESSION)
+  const idle = task(store)
+  assert.equal(idle.status, 'SUCCESS', '确认不在运行后应收敛为完成')
+  assert.equal(idle.finishedAt !== null, true)
+})
+
+check('RUNNING 收到静止信号同样收敛为 SUCCESS；WAIT_CONFIRM 不受影响', () => {
+  const store = makeStore()
+  emit(store, 'turn/start', { turn: 1 })
+  emit(store, 'tool/call', { turn: 1, step: 1, callId: 'c', name: 'ask_user_question', arguments: { questions: [{ question: '?' }] } })
+  store.applyIdle(SESSION)
+  assert.equal(task(store).status, 'WAIT_CONFIRM', '等人时不算静止')
+})
+
+check('建档后停在 START 的会话收到真人 user/message 应唤醒为「进行中」', () => {
+  const store = makeStore()
+  emit(store, 'user/message', { source: { kind: 'user', messageSeqs: [] }, content: '新需求' })
+  const after = emit(store, 'user/message', { source: { kind: 'user', messageSeqs: [] }, content: '再来一条' })
+  assert.equal(after.status, 'RUNNING', 'START + 真人消息＝开始干活')
+  assert.equal(after.finishedAt, null)
 })
 
 console.log(`\n全部 ${passed} 项通过。`)

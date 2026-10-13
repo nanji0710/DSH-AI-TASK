@@ -93,8 +93,24 @@ export function buildViewModel(input: {
   }
 
   // ---- 第一路：宿主快照（信息最全） ----
-  for (const detail of Object.values(snapshot?.details ?? {})) {
+  for (let detail of Object.values(snapshot?.details ?? {})) {
     if (archived.has(detail.sessionId)) continue // 已归档不属于活跃任务
+    const row = sessions.find((candidate) => candidate.id === detail.sessionId)
+    // 子代理会话归入其父会话，不单列（与第二路同口径）。宿主半边没有这条
+    // 过滤，快照里会带着子代理的任务卡；不拦住它们，列表就与侧栏对不上。
+    if (row?.origin === 'subagent') continue
+    // 状态关：宿主半边的 START 是「建档后尚未观测到任何事件」的初始值，
+    // 不能直通 UI（历史会话早已跑完，把未知当成未开始＝「待开始」僵尸）。
+    // 用标准 props 的权威运行态修正：在跑→RUNNING，不在跑→SUCCESS。
+    if (detail.status === TASK_STATUS.START) {
+      const running = statuses?.get(detail.sessionId)?.running === true || row?.running === true
+      detail = {
+        ...detail,
+        status: running ? TASK_STATUS.RUNNING : TASK_STATUS.SUCCESS,
+        finishedAt: running ? null : (detail.finishedAt ?? detail.lastActionTime),
+        progress: running ? detail.progress : 1
+      }
+    }
     tasks.set(detail.sessionId, detail)
   }
 
