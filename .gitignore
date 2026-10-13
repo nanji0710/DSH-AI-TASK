@@ -4,3 +4,11 @@
 # 临时文件
 .tmp-*
 *.tmp
+
+# 插件构建与本地依赖（自 dsh-taskpulse/ 合并而来，2026-10 仓库扁平化）
+node_modules/
+dist/
+release/
+*.tgz
+*.log
+.DS_Store

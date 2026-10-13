@@ -16,7 +16,8 @@
 #   本文件在同一个 run 内顺序完成：构建 → 打 tag → 建 Release。
 #
 # 版本号约定
-#   版本的唯一来源是 dsh-taskpulse/package.json 的 version 字段，
+#   版本的唯一来源是仓库根目录 package.json 的 version 字段
+#   （2026-10 仓库扁平化：插件工程就在根目录，不再有 dsh-taskpulse/ 子目录），
 #   发布 tag 为 v<version>（例如 version 1.0.0 → tag v1.0.0）。
 #   因此「发一个新版本」= 改 package.json 的 version，push 到 main。
 # ---------------------------------------------------------------------------
@@ -47,41 +48,13 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # 0) 前置探测：dsh-taskpulse/ 尚未落地时优雅跳过，避免仓库长期挂红叉
-  #    插件目录一旦出现，后续 job 自动开始工作，不需要再改这个文件。
-  # ---------------------------------------------------------------------------
-  detect:
-    name: Detect plugin
-    runs-on: ubuntu-latest
-    outputs:
-      present: ${{ steps.check.outputs.present }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check plugin manifest
-        id: check
-        run: |
-          if [ -f dsh-taskpulse/package.json ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-            echo "✅ 检测到 dsh-taskpulse/package.json"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::未找到 dsh-taskpulse/package.json，跳过构建与发布"
-          fi
-
-  # ---------------------------------------------------------------------------
-  # 1) 构建与校验
+  # 1) 构建与校验（插件工程 = 仓库根目录）
   # ---------------------------------------------------------------------------
   build:
     name: Build & Test
-    needs: detect
-    if: needs.detect.outputs.present == 'true'
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release_tag.outputs.tag }}
-    defaults:
-      run:
-        working-directory: dsh-taskpulse
     steps:
       - uses: actions/checkout@v4
 
@@ -91,7 +64,7 @@ jobs:
           cache: npm
           # 指向 package.json 而不是 lockfile：还没有 lockfile 时 setup-node
           # 会因「路径无法解析」直接失败，用 package.json 做缓存键没有这个坑。
-          cache-dependency-path: dsh-taskpulse/package.json
+          cache-dependency-path: package.json
 
       - name: Install dependencies
         run: |
@@ -115,7 +88,6 @@ jobs:
         run: |
           set -euo pipefail
           # tag 触发时用 tag 本身；否则由 package.json 的 version 推导 v<version>。
-          # 注意 working-directory 是 dsh-taskpulse，所以这里是 ./package.json。
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF_NAME}"
           else
@@ -132,28 +104,29 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.release_tag.outputs.tag }}"
-          mkdir -p ../release
+          mkdir -p release
 
           # 1) npm tarball：DSH 支持 `dsh plugin add ./xxx.tgz`。
           #    统一重命名成 tag 名，保证附件名与 Release 正文里的安装命令逐字一致。
-          npm pack --pack-destination ../release
-          TGZ=$(find ../release -maxdepth 1 -name '*.tgz' -print -quit)
+          npm pack --pack-destination release
+          TGZ=$(find release -maxdepth 1 -name '*.tgz' -print -quit)
           if [ -z "$TGZ" ]; then
             echo "::error::npm pack 没有产出 .tgz"
             exit 1
           fi
-          mv "$TGZ" "../release/dsh-taskpulse-${TAG}.tgz"
+          mv "$TGZ" "release/dsh-taskpulse-${TAG}.tgz"
 
           # 2) 源码 zip：解压后就是完整插件目录，可本地安装或查阅源码。
           #    只打包真实存在的文件（icon.svg / LICENSE 等不是每个插件都有）。
+          #    design/ 是历史设计稿，不随插件分发。
           FILES=()
           for f in dist cordis.patch.yml cordis.yml icon.svg docs package.json README.md README.zh.md CHANGELOG.md LICENSE; do
             if [ -e "$f" ]; then FILES+=("$f"); fi
           done
-          zip -r "../release/dsh-taskpulse-${TAG}.zip" "${FILES[@]}"
+          zip -r "release/dsh-taskpulse-${TAG}.zip" "${FILES[@]}"
 
           echo "----- release/ -----"
-          ls -lh ../release
+          ls -lh release
 
       - uses: actions/upload-artifact@v4
         if: >-
@@ -170,11 +143,10 @@ jobs:
   # ---------------------------------------------------------------------------
   release:
     name: Tag & Release
-    needs: [detect, build]
+    needs: [build]
     # ⚠️ 这里的续行必须保持同一缩进：YAML 折叠标量遇到「更深缩进」的行会保留
     #    换行符，把裸 \n 塞进表达式里。同一缩进才会折叠成空格。
     if: >-
-      needs.detect.outputs.present == 'true' &&
       (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))))
     runs-on: ubuntu-latest
     steps:
