@@ -25,6 +25,27 @@ import { TASK_STATUS, addToCounts, emptyCounts, formatRelativeTime } from '../mo
 import { WorkspaceGroup } from './WorkspaceGroup'
 import { TaskDetailView } from './TaskDetail'
 
+/**
+ * 空态装饰图标。
+ *
+ * 早先这里是 emoji（放大镜 / 月亮），在深色下会带出系统彩色字形，
+ * 与整块面板的灰阶层级不搭；换成描边 SVG，颜色由 currentColor 决定，
+ * 深浅两套主题都自动跟随文字色。
+ */
+function EmptyIcon(): ReactElement {
+  return (
+    <svg className="tp-empty-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 export interface TaskPanelProps {
   workspaces: WorkspaceGroupView[]
   tasks: TaskDetail[]
@@ -99,17 +120,22 @@ export function matchesFilter(task: Pick<TaskDetail, 'status'>, filter: TaskFilt
 }
 
 /**
- * 统计胶囊的定义：emoji + 文案 + 语义色 + 它对应的筛选。
+ * 统计胶囊的定义：文案 + 语义色 + 它对应的筛选。
  *
  * 顺序沿用 UI 规范与原型（运行 / 确认 / 完成 / 异常），阻塞排在最后，
  * 且只在真的有阻塞任务时才出现 —— 平时不占位置。
+ *
+ * 这里**不带** icon 字段。早先每枚胶囊前面挂一个彩色方块或圆点 emoji，
+ * 图形由系统字体决定（有方块有圆点，形状本就不统一），深色下还会各自
+ * 带出彩色字面，跟主题状态色打架。现在圆点由 CSS 的 `.tp-stat::before`
+ * 画（取 currentColor），颜色天然跟随胶囊文字色。
  */
-const STAT_PILLS: ReadonlyArray<{ key: TaskFilter; icon: string; label: string; tone: string }> = [
-  { key: 'running', icon: '🟦', label: '运行', tone: 'blue' },
-  { key: 'waitConfirm', icon: '🟡', label: '确认', tone: 'yellow' },
-  { key: 'success', icon: '🟢', label: '完成', tone: 'green' },
-  { key: 'error', icon: '🔴', label: '异常', tone: 'red' },
-  { key: 'blocked', icon: '🟠', label: '阻塞', tone: 'orange' }
+const STAT_PILLS: ReadonlyArray<{ key: TaskFilter; label: string; tone: string }> = [
+  { key: 'running', label: '运行', tone: 'blue' },
+  { key: 'waitConfirm', label: '确认', tone: 'yellow' },
+  { key: 'success', label: '完成', tone: 'green' },
+  { key: 'error', label: '异常', tone: 'red' },
+  { key: 'blocked', label: '阻塞', tone: 'orange' }
 ]
 
 export function TaskPanel(props: TaskPanelProps): ReactElement {
@@ -162,7 +188,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
     : visibleTasks.length === 0
       ? (
           <div className="tp-empty">
-            <span className="tp-empty-icon" aria-hidden="true">🔍</span>
+            <EmptyIcon />
             {tasks.length === 0
               ? '暂无活跃任务\n有会话开始执行时会自动出现'
               : `没有「${TASK_FILTER_LABEL[filter]}」状态的任务`}
@@ -192,7 +218,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
       </div>
 
       {/* 任务统计（规范 3 第二段）——这一排同时就是状态筛选。
-          点「🔴 异常 1」即只看异常，**再点同一枚**即回到全部。
+          点「异常 1」即只看异常，**再点同一枚**即回到全部。
           出口刻意只有这一个：早先在筛选生效时会在末尾追加一枚「✕ 全部 N」，
           但用户明确要求去掉（「点击任意一个时，选项末尾会多出一个『全部』」），
           一排里只有状态胶囊，没有第六枚按钮。
@@ -220,7 +246,6 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
                 setFilter(active ? 'all' : pill.key)
               }}
             >
-              <span aria-hidden="true">{pill.icon}</span>
               {pill.label} {count}
             </button>
           )
@@ -263,7 +288,7 @@ function TaskListView({
   if (tasks.length === 0) {
     return (
       <div className="tp-empty">
-        <span className="tp-empty-icon" aria-hidden="true">🌙</span>
+        <EmptyIcon />
         当前没有正在执行的任务
         <br />
         发起一次对话后，执行状态会实时出现在这里

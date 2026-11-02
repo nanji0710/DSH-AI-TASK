@@ -53,6 +53,8 @@ function ruleBody(selector) {
 const HOST_TOKENS = new Set([
   '--dsw-alias-bg-base',
   '--dsw-alias-bg-layer-1',
+  '--dsw-alias-bg-layer-2',
+  '--dsw-alias-bg-layer-3',
   '--dsw-alias-bg-overlay',
   '--dsw-alias-border-l1',
   '--dsw-alias-border-l2',
@@ -198,6 +200,47 @@ check('分组计数的五种 tone 都有浅色规则（否则深色以外的主�
       `分组计数的 ${tone} 缺少浅色规则`
     )
   }
+})
+
+check('统计胶囊的状态点由 CSS 伪元素绘制（不再用形状不统一的 emoji）', () => {
+  const body = ruleBody('.tp-stat::before')
+  assert.ok(body !== null, '缺少 .tp-stat::before 规则')
+  assert.ok(
+    /background:\s*currentColor/.test(body),
+    `.tp-stat::before 应取 currentColor，深色覆盖才能只改 color 一处，实际：${body.trim()}`
+  )
+  const panelSource = readFileSync(join(process.cwd(), 'src', 'components', 'TaskPanel.tsx'), 'utf8')
+  const emoji = panelSource.match(/[\u{1F300}-\u{1FAFF}]/gu) ?? []
+  assert.deepEqual(emoji, [], `统计胶囊不应再用 emoji 图标，实际：${emoji.join(' ')}`)
+})
+
+check('工作区分组头部不再用 emoji，改用跟随 currentColor 的 SVG 图标', () => {
+  const source = readFileSync(join(process.cwd(), 'src', 'components', 'WorkspaceGroup.tsx'), 'utf8')
+  const emoji = source.match(/[\u{1F300}-\u{1FAFF}]/gu) ?? []
+  assert.deepEqual(emoji, [], `组头不应再用 emoji，实际：${emoji.join(' ')}`)
+  assert.ok(source.includes('className="tp-group-icon"'), '组头应有 tp-group-icon 的 SVG 图标')
+  assert.ok(/stroke="currentColor"/.test(source), 'SVG 图标应描边 currentColor，才能跟随主题')
+})
+
+check('深色档用层级 token 搭出「面板 < 分组 < 卡片」的亮度阶梯', () => {
+  for (const [selector, token] of [
+    ['\\.tp-panel', '--dsw-alias-bg-layer-1'],
+    ['\\.tp-card', '--dsw-alias-bg-layer-2']
+  ]) {
+    const match = css.match(new RegExp(`body\\[data-ds-dark-theme\\]\\s*${selector}\\s*\\{([^}]*)\\}`))
+    assert.ok(match !== null, `深色档缺少 ${selector.replace('\\', '')} 规则`)
+    assert.ok(match[1].includes(token), `${selector} 的深色底应使用 ${token}，实际：${match[1].trim().slice(0, 100)}`)
+  }
+  // 宿主 bg-overlay 在深色下是中灰 #61666b，压成整块面板会糊成一片，不能再当面板底。
+  const panelMatch = css.match(/body\[data-ds-dark-theme\]\s*\.tp-panel\s*\{([^}]*)\}/)
+  assert.ok(!panelMatch[1].includes('--dsw-alias-bg-overlay'), '深色面板不应继续用 bg-overlay 中灰底')
+})
+
+check('深色卡片悬停只换层级色，不再叠浅色投影', () => {
+  const match = css.match(/body\[data-ds-dark-theme\]\s*\.tp-card\[data-clickable="true"\]:hover\s*\{([^}]*)\}/)
+  assert.ok(match !== null, '深色档缺少卡片悬停规则')
+  assert.ok(match[1].includes('--dsw-alias-bg-layer-3'), '悬停底应再亮一档（bg-layer-3）')
+  assert.ok(/box-shadow:\s*none/.test(match[1]), '深色卡片不应再叠浅色投影')
 })
 
 console.log(`\n全部 ${passed} 项通过。`)

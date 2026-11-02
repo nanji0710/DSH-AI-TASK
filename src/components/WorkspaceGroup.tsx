@@ -1,8 +1,13 @@
 /**
  * WorkspaceGroup —— 工作区分组（规范 4 / 5）。
  *
- * 头部形如 `📁 GoldPulse` 后接状态统计 `🟦2运行  🟡1确认`；
+ * 头部形如 `▸ DSH-AI-TASK` 后接状态统计 `完成 2 运行 1`；
  * 组内是任务卡片（或紧凑的会话条目）。
+ *
+ * 头部不再用 emoji：原先是文件夹贴纸 emoji + 彩色方块 emoji 拼的计数。
+ * emoji 的形状/配色由系统字体决定，深色面板上它们比正文还跳，且数字在前
+ * 的写法（如「2 运行」）也不通顺。现在文件夹是描边 SVG（currentColor，
+ * 跟着主题走），计数统一写成「运行 2」——颜色仍由 data-tone 交给 CSS 处理。
  */
 
 import type { ReactElement } from 'react'
@@ -20,6 +25,21 @@ export interface WorkspaceGroupProps {
   compact?: boolean
 }
 
+/** 描边文件夹图标（13x13，颜色跟随 currentColor）。 */
+function FolderIcon(): ReactElement {
+  return (
+    <svg className="tp-group-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        d="M1.75 3.5h3.9l1.35 1.5h7.25v8.25a.75.75 0 0 1-.75.75H2.5a.75.75 0 0 1-.75-.75V3.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 export function WorkspaceGroup({
   workspace,
   tasks,
@@ -30,16 +50,16 @@ export function WorkspaceGroup({
   return (
     <div className="tp-group">
       <div className="tp-group-title">
-        <span aria-hidden="true">📁</span>
+        <FolderIcon />
         <span className="tp-group-title-name" title={workspace.path || workspace.name}>
           {workspace.name}
         </span>
         <span className="tp-group-counts">
-          {workspace.counts.running > 0 && <span data-tone="blue">🟦{workspace.counts.running}运行</span>}
-          {workspace.counts.waitConfirm > 0 && <span data-tone="yellow">🟡{workspace.counts.waitConfirm}确认</span>}
-          {workspace.counts.error > 0 && <span data-tone="red">🔴{workspace.counts.error}异常</span>}
-          {workspace.counts.blocked > 0 && <span data-tone="orange">🟠{workspace.counts.blocked}阻塞</span>}
-          {workspace.counts.success > 0 && <span data-tone="green">🟢{workspace.counts.success}完成</span>}
+          {workspace.counts.running > 0 && <span data-tone="blue">运行 {workspace.counts.running}</span>}
+          {workspace.counts.waitConfirm > 0 && <span data-tone="yellow">确认 {workspace.counts.waitConfirm}</span>}
+          {workspace.counts.error > 0 && <span data-tone="red">异常 {workspace.counts.error}</span>}
+          {workspace.counts.blocked > 0 && <span data-tone="orange">阻塞 {workspace.counts.blocked}</span>}
+          {workspace.counts.success > 0 && <span data-tone="green">完成 {workspace.counts.success}</span>}
         </span>
       </div>
 

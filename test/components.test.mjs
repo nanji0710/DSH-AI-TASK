@@ -314,7 +314,11 @@ check('计数为 0 的胶囊被禁用（点了没结果不如点不动）', () =
   const disabled = html.match(/class="tp-stat"[^>]*disabled/g) ?? []
   assert.ok(disabled.length >= 2, `计数为 0 的胶囊应被禁用，实际禁用 ${disabled.length} 个`)
   // 阻塞为 0 时整枚胶囊不渲染（平时不占位置）。
-  assert.ok(!html.includes('🟠'), '无阻塞任务时不应出现阻塞胶囊')
+  const statsRow = html.slice(html.indexOf('tp-stats'), html.indexOf('tp-body'))
+  assert.ok(!statsRow.includes('阻塞'), `无阻塞任务时不应出现阻塞胶囊，实际：${statsRow}`)
+  // 胶囊不再带 emoji 图标（原来是彩色方块/圆点，形状随系统字体变化，
+  // 深色下还各自带出彩色字面）。状态点改由 CSS 的 ::before 绘制。
+  assert.ok(!/[\u{1F300}-\u{1FAFF}]/u.test(statsRow), `胶囊不应再用 emoji，实际：${statsRow}`)
 })
 
 check('筛选无结果时给出可撤销的空态，而不是整片空白', () => {

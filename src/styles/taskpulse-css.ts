@@ -132,7 +132,7 @@ const CSS = `
   height: 600px;
   box-sizing: border-box;
   border: 1px solid var(--dsw-alias-border-l1, #e5e7eb);
-  border-radius: 18px;
+  border-radius: 16px;
   background: var(--dsw-alias-bg-overlay, rgba(255, 255, 255, .88));
   backdrop-filter: var(--dsw-menu-backdrop-filter, blur(18px));
   box-shadow: var(--dsw-elevation-panel, 0 15px 45px rgba(0, 0, 0, .15));
@@ -143,16 +143,17 @@ const CSS = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
+  gap: 8px;
+  padding: 13px 16px;
   border-bottom: 1px solid var(--dsw-alias-border-l1, #e5e7eb);
 }
-.tp-panel-title { font-size: 14px; font-weight: 600; }
+.tp-panel-title { font-size: 14px; font-weight: 600; letter-spacing: .01em; }
 .tp-panel-sub { font-size: 11px; color: var(--dsw-alias-label-tertiary, #9ca3af); margin-top: 2px; }
 .tp-icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border: none; border-radius: 8px;
+  width: 24px; height: 24px; border: none; border-radius: 7px;
   background: transparent; color: var(--dsw-alias-label-secondary, #6b7280);
-  cursor: pointer; font-size: 14px;
+  cursor: pointer; font-size: 13px;
 }
 .tp-icon-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, .05)); }
 
@@ -168,26 +169,49 @@ const CSS = `
        （胶囊是 inline-flex，本身也不会内部换行）；
      - font-variant-numeric: tabular-nums 让数字等宽，压缩时宽度不抖。
    面板可用宽度约 324px，四枚常态胶囊约 272px，余量留给「✕ 全部」。 */
-.tp-stats { display: flex; gap: 6px; padding: 12px 18px 4px; flex-wrap: nowrap; align-items: center; }
+.tp-stats { display: flex; gap: 6px; padding: 10px 16px 2px; flex-wrap: nowrap; align-items: center; }
+
+/* 状态胶囊 = 状态点 + 文案 + 计数。
+   ⚠️ 状态点用 ::before 伪元素画，不再用 🟦🟡🟢🔴 emoji：emoji 的图形由字体
+   决定（🟦 是方块、其余是圆点），形状本来就不统一，还会带出各自的彩色字面
+   与主题色打架。伪元素取 currentColor，「文字什么颜色，点就是什么颜色」——
+   深色覆盖里只改 color 一处，圆点自动跟随，不会出现两套色值走偏。 */
 .tp-stat {
-  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
   flex: 0 1 auto; min-width: 0; overflow: hidden;
-  padding: 6px 8px; border-radius: 12px;
+  padding: 5px 10px 5px 20px;
+  border-radius: 999px;
   border: 1px solid transparent;
   background: var(--dsw-alias-interactive-bg-hover, #f3f4f6);
   color: var(--dsw-alias-label-secondary, #6b7280);
-  font-size: 12px; white-space: nowrap; font-family: inherit;
+  font-size: 12px; font-weight: 500; white-space: nowrap; font-family: inherit;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: background var(--ds-transition-duration-fast, .1s) var(--ds-ease-in-out, cubic-bezier(.4,0,.2,1));
 }
+.tp-stat::before {
+  content: ""; position: absolute; left: 9px; top: 50%;
+  width: 6px; height: 6px; margin-top: -3px; border-radius: 50%;
+  background: currentColor;
+}
 .tp-stat:hover:not(:disabled) { filter: brightness(.96); }
-.tp-stat:disabled { opacity: .45; cursor: default; }
 .tp-stat[data-tone="blue"] { background: #dbeafe; color: #2563eb; }
 .tp-stat[data-tone="yellow"] { background: #fef9c3; color: #ca8a04; }
 .tp-stat[data-tone="green"] { background: #dcfce7; color: #16a34a; }
 .tp-stat[data-tone="red"] { background: #fee2e2; color: #dc2626; }
 .tp-stat[data-tone="orange"] { background: #ffedd5; color: #ea580c; }
+/* 计数为 0 的胶囊不可点。原先靠「整枚 45% 透明」表达不可用：浅色下灰蒙蒙，
+   深色下几乎看不见；三枚灰胶囊夹着一枚亮绿，看起来像少画了东西。现在统一
+   收成中性静默态（灰字灰点 + 细边），有数字的那几枚才是彩色，注意力自然
+   落到真正有内容的状态上。规则必须排在 tone 规则之后，靠源码顺序覆盖底色。 */
+.tp-stat:disabled {
+  cursor: default;
+  background: var(--dsw-alias-interactive-bg-hover, #f3f4f6);
+  border-color: var(--dsw-alias-border-l1, #e5e7eb);
+  color: var(--dsw-alias-label-tertiary, #9ca3af);
+}
+.tp-stat:disabled::before { opacity: .55; }
 /* 选中：加深为实心，一眼看出「现在在看哪一类」。 */
 .tp-stat[aria-pressed="true"] { color: #fff; font-weight: 600; box-shadow: 0 1px 4px rgba(0, 0, 0, .18); }
 .tp-stat[aria-pressed="true"][data-tone="blue"] { background: #2563eb; }
@@ -196,14 +220,14 @@ const CSS = `
 .tp-stat[aria-pressed="true"][data-tone="red"] { background: #dc2626; }
 .tp-stat[aria-pressed="true"][data-tone="orange"] { background: #ea580c; }
 /* 滚动区 */
-.tp-body { flex: 1 1 auto; overflow-y: auto; padding: 8px 12px 12px; }
+.tp-body { flex: 1 1 auto; overflow-y: auto; padding: 4px 8px 10px; }
 .tp-body::-webkit-scrollbar { width: var(--dsh-scrollbar-width, 5px); }
 .tp-body::-webkit-scrollbar-thumb { background: var(--dsh-scrollbar-thumb, rgba(0, 0, 0, .18)); border-radius: 3px; }
 .tp-body::-webkit-scrollbar-thumb:hover { background: var(--dsh-scrollbar-thumb-hover, rgba(0, 0, 0, .3)); }
 
 /* 空态 */
 .tp-empty { padding: 40px 20px; text-align: center; color: var(--dsw-alias-label-tertiary, #9ca3af); font-size: 12px; line-height: 1.8; }
-.tp-empty-icon { font-size: 26px; display: block; margin-bottom: 8px; opacity: .5; }
+.tp-empty-icon { width: 26px; height: 26px; display: block; margin: 0 auto 8px; opacity: .38; }
 
 /* 工作区分组（规范 4/5） */
 /*
@@ -217,11 +241,26 @@ const CSS = `
  * 几乎同色，浅色观感不变）、深色 #303136（介于面板 #61666b 与卡片 #232324
  * 之间，层级仍然清楚）。
  */
-.tp-group { margin: 12px; padding: 12px; border-radius: 14px; background: var(--dsw-alias-menu-group-header-fill, #fafafa); }
+.tp-group {
+  margin: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  box-sizing: border-box;
+  background: var(--dsw-alias-menu-group-header-fill, #fafafa);
+}
 .tp-group:first-child { margin-top: 4px; }
-.tp-group-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+/* 组标题比卡片标题低一档（label-secondary + 12px）：分组是容器，不该和
+   任务标题抢视觉重量。图标换成内联 SVG 描边文件夹，颜色跟随 currentColor，
+   深色下自动变浅 —— 原来的 📁 emoji 是彩色贴纸，在深色面板上很跳。 */
+.tp-group-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; letter-spacing: .01em;
+  color: var(--dsw-alias-label-secondary, #6b7280);
+  margin-bottom: 8px;
+}
+.tp-group-icon { flex: 0 0 auto; width: 13px; height: 13px; opacity: .75; }
 .tp-group-title-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tp-group-counts { display: flex; gap: 6px; font-size: 11px; font-weight: 400; }
+.tp-group-counts { display: flex; gap: 8px; font-size: 11px; font-weight: 500; }
 .tp-group-counts span { white-space: nowrap; }
 /* 组头的状态计数：颜色原先写死在 WorkspaceGroup 的内联 style 里，深色模式下
    分组底是深色，饱和色对比度不够（#2563eb 在 #303136 上只有 2.5:1）。改由
@@ -238,25 +277,41 @@ const CSS = `
 .tp-conv-time { flex: 0 0 auto; font-size: 11px; color: var(--dsw-alias-label-tertiary, #9ca3af); }
 
 /* 任务卡片（规范 6） */
+/*
+ * 卡片与分组之间靠「1px 细边 + 极浅投影」分层，不再用 0 4px 12px 的大阴影：
+ * 一张卡一个投影，一屏十来张就糊成一片灰雾，深色下尤其明显。
+ * box-sizing 必须写死 border-box —— 加了 1px 边框若不改盒模型，卡片会比分组
+ * 内容区宽 2px，右侧露出不齐的缝。
+ */
 .tp-card {
   background: var(--dsw-alias-bg-layer-1, #fff);
-  border-radius: 12px;
-  padding: 12px;
-  margin-top: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .05);
+  border: 1px solid var(--dsw-alias-border-l1, #e5e7eb);
+  border-radius: 10px;
+  padding: 10px 11px;
+  margin-top: 6px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
   animation: tp-slide-in var(--ds-transition-duration-slow, .3s) var(--ds-ease-in-out, cubic-bezier(.4,0,.2,1));
 }
-.tp-card[data-clickable="true"] { cursor: pointer; }
-.tp-card[data-clickable="true"]:hover { box-shadow: 0 6px 18px rgba(0, 0, 0, .1); }
+.tp-card[data-clickable="true"] {
+  cursor: pointer;
+  transition: border-color var(--ds-transition-duration-fast, .1s) var(--ds-ease-in-out, cubic-bezier(.4,0,.2,1)),
+    box-shadow var(--ds-transition-duration-fast, .1s) var(--ds-ease-in-out, cubic-bezier(.4,0,.2,1));
+}
+.tp-card[data-clickable="true"]:hover {
+  border-color: var(--dsw-alias-border-l2, #d1d5db);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .08);
+}
 .tp-card-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.tp-card-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; min-width: 0; }
+.tp-card-title { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; min-width: 0; }
 .tp-card-title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tp-card-meta { margin-top: 6px; font-size: 12px; color: var(--dsw-alias-label-secondary, #6b7280); line-height: 1.6; }
+.tp-card-meta { margin-top: 5px; font-size: 12px; color: var(--dsw-alias-label-secondary, #6b7280); line-height: 1.55; }
 .tp-card-meta-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tp-card-meta-key { color: var(--dsw-alias-label-tertiary, #9ca3af); }
 
-/* 状态徽章（规范 7 色表） */
-.tp-badge { flex: 0 0 auto; padding: 3px 8px; border-radius: 10px; font-size: 12px; line-height: 1.4; white-space: nowrap; }
+/* 状态徽章（规范 7 色表）——胶囊形、11px、中等字重，作为卡片右端的「标签」，
+   比原来的 12px 方角块更轻，不会和标题争视线。 */
+.tp-badge { flex: 0 0 auto; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; line-height: 1.5; white-space: nowrap; }
 .tp-badge[data-tone="blue"] { background: #dbeafe; color: #2563eb; }
 .tp-badge[data-tone="yellow"] { background: #fef9c3; color: #ca8a04; }
 .tp-badge[data-tone="green"] { background: #dcfce7; color: #16a34a; }
@@ -265,7 +320,7 @@ const CSS = `
 .tp-badge[data-tone="gray"] { background: var(--dsw-alias-interactive-bg-hover, #f3f4f6); color: var(--dsw-alias-label-secondary, #6b7280); }
 
 /* 状态圆点：执行中蓝色呼吸动画（规范 10） */
-.tp-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-label-tertiary, #9ca3af); }
+.tp-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--dsw-alias-label-tertiary, #9ca3af); }
 .tp-dot[data-tone="blue"] { background: #2563eb; animation: tp-breathe 1.4s ease-in-out infinite; }
 .tp-dot[data-tone="yellow"] { background: #ca8a04; }
 .tp-dot[data-tone="green"] { background: #16a34a; }
@@ -319,7 +374,7 @@ const CSS = `
 /* 底栏 */
 .tp-footer {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 18px; border-top: 1px solid var(--dsw-alias-border-l1, #e5e7eb);
+  padding: 9px 16px; border-top: 1px solid var(--dsw-alias-border-l1, #e5e7eb);
   font-size: 12px; color: var(--dsw-alias-label-secondary, #6b7280);
 }
 .tp-footer-btn { border: none; background: transparent; color: var(--dsw-alias-state-business-primary, #2563eb); font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 8px; }
@@ -474,6 +529,43 @@ body[data-ds-dark-theme] .tp-confirm { background: rgba(245, 158, 11, .14); bord
 body[data-ds-dark-theme] .tp-confirm-title { color: var(--dsw-alias-state-warn-primary, #f59e0b); }
 body[data-ds-dark-theme] .tp-confirm-hint { color: var(--dsw-alias-state-warn-label, #dd8629); }
 body[data-ds-dark-theme] .tp-error { background: rgba(242, 90, 90, .16); color: var(--dsw-alias-state-error-primary, #f25a5a); }
+
+/* ---------- 深色档的层级（面板 / 分组 / 卡片） ---------- */
+/*
+ * 宿主 bg-overlay 在深色下是 bluish-700 = #61666b 的中灰：一整块 360x600 的
+ * 面板压上去，既不像浮窗也不像纸面，看不出任何层级（用户反馈「不好看」）。
+ * 这里换成宿主真实存在的层级 token —— bg-layer-1 #232324 / bg-layer-2 #2c2c2e /
+ * bg-layer-3 #353638 —— 搭一条「面板 < 分组 < 卡片」的亮度阶梯：卡片比面板亮
+ * 一点点，分组用几乎透明的提亮而不是第二块实色，三层关系一眼能读出来。
+ * 浅色档的观感不动（那边白卡片压浅灰分组本来就成立）。
+ */
+body[data-ds-dark-theme] .tp-panel {
+  background: var(--dsw-alias-bg-layer-1, #232324);
+  border-color: rgba(255, 255, 255, .08);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+}
+body[data-ds-dark-theme] .tp-group {
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .05);
+}
+body[data-ds-dark-theme] .tp-card {
+  background: var(--dsw-alias-bg-layer-2, #2c2c2e);
+  border-color: rgba(255, 255, 255, .07);
+  box-shadow: none;
+}
+body[data-ds-dark-theme] .tp-card[data-clickable="true"]:hover {
+  background: var(--dsw-alias-bg-layer-3, #353638);
+  border-color: rgba(255, 255, 255, .12);
+  box-shadow: none;
+}
+/* 计数为 0 的「静默胶囊」在深色下也要压得住：浅色档那层 #f3f4f6 淡底搬过来
+   是一块亮灰，等于又造出三枚发光糖片。顺序必须在上面 dark tone 规则之后，
+   否则会被 tone 的底色重新盖回去。 */
+body[data-ds-dark-theme] .tp-stat:disabled {
+  background: rgba(255, 255, 255, .04);
+  border-color: rgba(255, 255, 255, .06);
+  color: var(--dsw-alias-label-tertiary, #adb2b8);
+}
 `
 
 let injected = false
