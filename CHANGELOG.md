@@ -5,6 +5,50 @@
 格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
 
+## [2.0.1] - 2026-11-02
+
+### 修复
+
+- **深色模式下列表分组变白底、工作区名看不见** —— DSH 深色主题下，任务列表里
+  每个工作区分组都是一整块白底，而组标题用的是 `label-primary`（深色主题下是
+  近白色 `#f9fafb`），白字白底，工作区名字直接消失；卡片也因此像浮在白板上。
+  根因不是配色，而是**引用了一个宿主根本不存在的 token**：分组底色写的是
+  `var(--dsw-alias-fill-l1, #fafafa)`，但 `dsh-client-ui-theme` 的 alias 表里
+  没有 `fill-l1` / `fill-l2`（只有 bg-layer-1/2/3、bg-overlay、
+  interactive-bg-hover、menu-group-header-fill 等）。变量解析失败 ⇒ 永远取
+  fallback `#fafafa`，两套主题下都是白底，浅色下恰好与设计同色所以没暴露。
+  同一类问题还波及统计胶囊默认底、灰色徽章、进度条轨道、次级按钮（均写
+  `fill-l2`）。现全部换成主题真实 token：分组用 `menu-group-header-fill`
+  （浅色 `#f8f9fa`，与原设计几乎同色；深色 `#303136`），其余表面用
+  `interactive-bg-hover` / `border-l2`。
+- **深色下的状态徽章与统计胶囊仍是浅色糖片** —— 徽章、胶囊的底色写死 V3.0
+  色表的淡底（`#dcfce7` 这类），落在深色卡片 `#232324` 上是一块块发光的浅色
+  块。现补 `body[data-ds-dark-theme]` 覆盖：半透明状态色底 + 宿主 `state-*`
+  亮色前景（business `#7aaaff` / warn `#f59e0b` / success `#22c55e` /
+  error `#f25a5a`，橙色取 `#fb923c`）；筛选选中态改为亮色实心 + 深字。
+  浅色档观感完全不变。
+- **组头计数颜色改由 CSS 控制** —— `WorkspaceGroup` 原来用内联
+  `style={{ color }}` 写死五种状态色，深色下无法覆盖；现改为 `data-tone`，
+  与徽章/胶囊共用同一套深色覆盖。
+
+### 测试
+
+- 新增 `test/theme.test.mjs`（12 项）：样式引用的每个变量必须在**已核实的宿主
+  token 白名单**里（`fill-l1/l2` 这类幽灵变量会被拦下）、分组底色必须用
+  `menu-group-header-fill`、深色覆盖必须存在且覆盖分组计数/状态圆点/进度条/
+  时间线/提示条/确认卡/错误条/徽章/胶囊、不得依赖 `prefers-color-scheme`
+  或 `light-dark()`（宿主主题包不切换 `color-scheme`）。
+- 全套 **163 项断言**通过（9 套件）。
+
+### 说明
+
+- 视觉验证方式：用真实组件 + 从宿主主题包原样抽出的两套变量表渲染截图
+  （`.tmp-theme/`，仅本地、不入库）。深色下实测：页面 `#151517`、面板
+  `#61666b`、分组 `#303136`、卡片 `#232324`、标题 `#f9fafb`，与宿主 token
+  取值逐一吻合。
+- 深色适配只能靠 `body[data-ds-dark-theme]` 属性选择器：宿主没有为
+  `body` 设置 `color-scheme`，`light-dark()` 与 `prefers-color-scheme` 都不可用。
+
 ## [2.0.0] - 2026-10-13
 
 这是第一个大版本：汇总自 1.5.0 以来三个中间版本的全部更新与本次标题栏修复。

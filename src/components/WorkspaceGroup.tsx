@@ -35,11 +35,11 @@ export function WorkspaceGroup({
           {workspace.name}
         </span>
         <span className="tp-group-counts">
-          {workspace.counts.running > 0 && <span style={{ color: '#2563eb' }}>🟦{workspace.counts.running}运行</span>}
-          {workspace.counts.waitConfirm > 0 && <span style={{ color: '#ca8a04' }}>🟡{workspace.counts.waitConfirm}确认</span>}
-          {workspace.counts.error > 0 && <span style={{ color: '#dc2626' }}>🔴{workspace.counts.error}异常</span>}
-          {workspace.counts.blocked > 0 && <span style={{ color: '#ea580c' }}>🟠{workspace.counts.blocked}阻塞</span>}
-          {workspace.counts.success > 0 && <span style={{ color: '#16a34a' }}>🟢{workspace.counts.success}完成</span>}
+          {workspace.counts.running > 0 && <span data-tone="blue">🟦{workspace.counts.running}运行</span>}
+          {workspace.counts.waitConfirm > 0 && <span data-tone="yellow">🟡{workspace.counts.waitConfirm}确认</span>}
+          {workspace.counts.error > 0 && <span data-tone="red">🔴{workspace.counts.error}异常</span>}
+          {workspace.counts.blocked > 0 && <span data-tone="orange">🟠{workspace.counts.blocked}阻塞</span>}
+          {workspace.counts.success > 0 && <span data-tone="green">🟢{workspace.counts.success}完成</span>}
         </span>
       </div>
 

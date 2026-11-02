@@ -174,7 +174,7 @@ const CSS = `
   flex: 0 1 auto; min-width: 0; overflow: hidden;
   padding: 6px 8px; border-radius: 12px;
   border: 1px solid transparent;
-  background: var(--dsw-alias-fill-l1, #f3f4f6);
+  background: var(--dsw-alias-interactive-bg-hover, #f3f4f6);
   color: var(--dsw-alias-label-secondary, #6b7280);
   font-size: 12px; white-space: nowrap; font-family: inherit;
   font-variant-numeric: tabular-nums;
@@ -206,12 +206,31 @@ const CSS = `
 .tp-empty-icon { font-size: 26px; display: block; margin-bottom: 8px; opacity: .5; }
 
 /* 工作区分组（规范 4/5） */
-.tp-group { margin: 12px; padding: 12px; border-radius: 14px; background: var(--dsw-alias-fill-l1, #fafafa); }
+/*
+ * ⚠️ 分组底色必须用 DSH 主题**真实存在**的 token。
+ * 原来写的是 --dsw-alias-fill-l1 —— dsh-client-ui-theme 里根本没有这个变量
+ * （整张 alias 表搜不到 fill-l1），于是永远落到 fallback #fafafa：
+ * 浅色模式看不出问题，深色模式下就是一整块白底，而组标题文字用的是
+ * label-primary（深色主题下是 #f9fafb 近白色）—— 白字白底，工作区名字直接
+ * 消失。这就是用户报的「深色模式下列表显示有问题」。
+ * menu-group-header-fill 是宿主给分组容器用的底色：浅色 #f8f9fa（与原设计
+ * 几乎同色，浅色观感不变）、深色 #303136（介于面板 #61666b 与卡片 #232324
+ * 之间，层级仍然清楚）。
+ */
+.tp-group { margin: 12px; padding: 12px; border-radius: 14px; background: var(--dsw-alias-menu-group-header-fill, #fafafa); }
 .tp-group:first-child { margin-top: 4px; }
 .tp-group-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 10px; }
 .tp-group-title-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tp-group-counts { display: flex; gap: 6px; font-size: 11px; font-weight: 400; }
 .tp-group-counts span { white-space: nowrap; }
+/* 组头的状态计数：颜色原先写死在 WorkspaceGroup 的内联 style 里，深色模式下
+   分组底是深色，饱和色对比度不够（#2563eb 在 #303136 上只有 2.5:1）。改由
+   data-tone 交给 CSS，浅色沿用规范色表，深色在下方主题块里换成主题状态色。 */
+.tp-group-counts span[data-tone="blue"] { color: #2563eb; }
+.tp-group-counts span[data-tone="yellow"] { color: #ca8a04; }
+.tp-group-counts span[data-tone="green"] { color: #16a34a; }
+.tp-group-counts span[data-tone="red"] { color: #dc2626; }
+.tp-group-counts span[data-tone="orange"] { color: #ea580c; }
 
 /* 对话条目 */
 .tp-conv { display: flex; align-items: center; gap: 6px; padding: 4px 0 4px 10px; font-size: 12px; color: var(--dsw-alias-label-secondary, #6b7280); }
@@ -243,7 +262,7 @@ const CSS = `
 .tp-badge[data-tone="green"] { background: #dcfce7; color: #16a34a; }
 .tp-badge[data-tone="red"] { background: #fee2e2; color: #dc2626; }
 .tp-badge[data-tone="orange"] { background: #ffedd5; color: #ea580c; }
-.tp-badge[data-tone="gray"] { background: var(--dsw-alias-fill-l2, #f3f4f6); color: var(--dsw-alias-label-secondary, #6b7280); }
+.tp-badge[data-tone="gray"] { background: var(--dsw-alias-interactive-bg-hover, #f3f4f6); color: var(--dsw-alias-label-secondary, #6b7280); }
 
 /* 状态圆点：执行中蓝色呼吸动画（规范 10） */
 .tp-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-label-tertiary, #9ca3af); }
@@ -267,7 +286,7 @@ const CSS = `
 .tp-timeline-detail { padding-left: 18px; font-size: 11px; color: var(--dsw-alias-label-tertiary, #9ca3af); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 进度条 */
-.tp-progress { margin-top: 8px; height: 3px; border-radius: 2px; background: var(--dsw-alias-fill-l2, rgba(0, 0, 0, .08)); overflow: hidden; }
+.tp-progress { margin-top: 8px; height: 3px; border-radius: 2px; background: var(--dsw-alias-border-l2, rgba(0, 0, 0, .08)); overflow: hidden; }
 .tp-progress-bar { height: 100%; border-radius: 2px; background: var(--dsw-alias-state-business-primary, #2563eb); transition: width var(--ds-transition-duration-slow, .3s) var(--ds-ease-in-out, cubic-bezier(.4,0,.2,1)); }
 .tp-progress-bar[data-tone="green"] { background: #16a34a; }
 .tp-progress-bar[data-tone="red"] { background: #dc2626; }
@@ -286,7 +305,7 @@ const CSS = `
 .tp-action {
   padding: 4px 10px; border-radius: 8px; border: 1px solid transparent;
   font-size: 12px; cursor: pointer;
-  background: var(--dsw-alias-fill-l2, rgba(0, 0, 0, .05));
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, .05));
   color: var(--dsw-alias-label-primary, #1f2937);
 }
 .tp-action:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, .1)); }
@@ -382,6 +401,79 @@ const CSS = `
   from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: none; }
 }
+
+/* ================= 深色主题覆盖 ================= */
+/*
+ * DSH 的主题包把 alias 变量分别挂在 body{...}（浅色）与
+ * body[data-ds-dark-theme]{...}（深色）两套规则上，没有切换 color-scheme，
+ * 所以深色只能靠这个属性选择器命中（light-dark() 用不了）。
+ *
+ * 这一节只处理「写死的规范色」：V3.0 色表里的蓝/黄/绿/红/橙是按浅色底挑的
+ * 饱和色，落在深色卡片（#232324）或深色分组（#303136）上对比度不够
+ * （#2563eb 只有 2.4:1、#dc2626 只有 2.6:1）。底色类的问题（fill-l1/l2 这两个
+ * 宿主根本不存在的 token）已在各自规则里换成主题真实 token，不需要在这里补。
+ *
+ * 深色档取宿主 state-* 的 primary 值：business #7aaaff / warn #f59e0b /
+ * success #22c55e / error #f25a5a；橙色没有对应 token，单独取亮一档的 #fb923c。
+ */
+
+/* 前景色：分组计数、Timeline 三态标记、提示条色条（currentColor） */
+body[data-ds-dark-theme] .tp-group-counts span[data-tone="blue"],
+body[data-ds-dark-theme] .tp-timeline-mark[data-state="active"],
+body[data-ds-dark-theme] .tp-toast[data-tone="blue"] { color: var(--dsw-alias-state-business-primary, #7aaaff); }
+body[data-ds-dark-theme] .tp-group-counts span[data-tone="yellow"],
+body[data-ds-dark-theme] .tp-toast[data-tone="yellow"] { color: var(--dsw-alias-state-warn-primary, #f59e0b); }
+body[data-ds-dark-theme] .tp-group-counts span[data-tone="green"],
+body[data-ds-dark-theme] .tp-timeline-mark[data-state="done"],
+body[data-ds-dark-theme] .tp-toast[data-tone="green"] { color: var(--dsw-alias-state-success-primary, #22c55e); }
+body[data-ds-dark-theme] .tp-group-counts span[data-tone="red"],
+body[data-ds-dark-theme] .tp-timeline-mark[data-state="failed"],
+body[data-ds-dark-theme] .tp-toast[data-tone="red"] { color: var(--dsw-alias-state-error-primary, #f25a5a); }
+body[data-ds-dark-theme] .tp-group-counts span[data-tone="orange"],
+body[data-ds-dark-theme] .tp-toast[data-tone="orange"] { color: #fb923c; }
+/* 灰色提示（无状态变迁）跟随次要文字色，深色下本来就是浅灰，无需覆盖。 */
+
+/* 底色：状态圆点、进度条 */
+body[data-ds-dark-theme] .tp-dot[data-tone="blue"] { background: var(--dsw-alias-state-business-primary, #7aaaff); }
+body[data-ds-dark-theme] .tp-dot[data-tone="yellow"] { background: var(--dsw-alias-state-warn-primary, #f59e0b); }
+body[data-ds-dark-theme] .tp-dot[data-tone="green"] { background: var(--dsw-alias-state-success-primary, #22c55e); }
+body[data-ds-dark-theme] .tp-dot[data-tone="red"] { background: var(--dsw-alias-state-error-primary, #f25a5a); }
+body[data-ds-dark-theme] .tp-dot[data-tone="orange"] { background: #fb923c; }
+body[data-ds-dark-theme] .tp-progress-bar[data-tone="green"] { background: var(--dsw-alias-state-success-primary, #22c55e); }
+body[data-ds-dark-theme] .tp-progress-bar[data-tone="red"] { background: var(--dsw-alias-state-error-primary, #f25a5a); }
+body[data-ds-dark-theme] .tp-progress-bar[data-tone="orange"] { background: #fb923c; }
+body[data-ds-dark-theme] .tp-progress-bar[data-tone="yellow"] { background: var(--dsw-alias-state-warn-primary, #f59e0b); }
+
+/* 状态徽章 / 统计胶囊：浅色档用的是 V3.0 色表里的淡底（#dcfce7 这类），深色下
+   就是一块块发光的浅色糖片。改成半透明状态色底 + 亮一档的状态色字，和宿主
+   自己用 state-* 的方式一致；浅色档保持原样，不受影响。 */
+body[data-ds-dark-theme] .tp-badge[data-tone="blue"] { background: rgba(122, 170, 255, .16); color: var(--dsw-alias-state-business-primary, #7aaaff); }
+body[data-ds-dark-theme] .tp-badge[data-tone="yellow"] { background: rgba(245, 158, 11, .16); color: var(--dsw-alias-state-warn-primary, #f59e0b); }
+body[data-ds-dark-theme] .tp-badge[data-tone="green"] { background: rgba(34, 197, 94, .16); color: var(--dsw-alias-state-success-primary, #22c55e); }
+body[data-ds-dark-theme] .tp-badge[data-tone="red"] { background: rgba(242, 90, 90, .18); color: var(--dsw-alias-state-error-primary, #f25a5a); }
+body[data-ds-dark-theme] .tp-badge[data-tone="orange"] { background: rgba(251, 146, 60, .16); color: #fb923c; }
+
+body[data-ds-dark-theme] .tp-stat[data-tone="blue"] { background: rgba(122, 170, 255, .14); color: var(--dsw-alias-state-business-primary, #7aaaff); }
+body[data-ds-dark-theme] .tp-stat[data-tone="yellow"] { background: rgba(245, 158, 11, .14); color: var(--dsw-alias-state-warn-primary, #f59e0b); }
+body[data-ds-dark-theme] .tp-stat[data-tone="green"] { background: rgba(34, 197, 94, .14); color: var(--dsw-alias-state-success-primary, #22c55e); }
+body[data-ds-dark-theme] .tp-stat[data-tone="red"] { background: rgba(242, 90, 90, .16); color: var(--dsw-alias-state-error-primary, #f25a5a); }
+body[data-ds-dark-theme] .tp-stat[data-tone="orange"] { background: rgba(251, 146, 60, .14); color: #fb923c; }
+/* 选中态在浅色档是「实心饱和底 + 白字」；深色下改成亮一档的状态色 + 深字，
+   否则 #2563eb 这类深饱和底压在深色面板上会糊成一团。 */
+body[data-ds-dark-theme] .tp-stat[aria-pressed="true"] { color: var(--dsw-alias-bg-base, #151517); }
+body[data-ds-dark-theme] .tp-stat[aria-pressed="true"][data-tone="blue"] { background: var(--dsw-alias-state-business-primary, #7aaaff); }
+body[data-ds-dark-theme] .tp-stat[aria-pressed="true"][data-tone="yellow"] { background: var(--dsw-alias-state-warn-primary, #f59e0b); }
+body[data-ds-dark-theme] .tp-stat[aria-pressed="true"][data-tone="green"] { background: var(--dsw-alias-state-success-primary, #22c55e); }
+body[data-ds-dark-theme] .tp-stat[aria-pressed="true"][data-tone="red"] { background: var(--dsw-alias-state-error-primary, #f25a5a); }
+body[data-ds-dark-theme] .tp-stat[aria-pressed="true"][data-tone="orange"] { background: #fb923c; }
+
+/* 确认卡片 / 错误条：宿主只提供 warn 的 tertiary（浅色 amber-100 / 深色 amber-900），
+   error 没有 tertiary 档。这里用半透明状态色代替写死的 #fef9c3 / #fee2e2，
+   否则深色列表里会突然出现一整块发光的浅黄/浅粉。 */
+body[data-ds-dark-theme] .tp-confirm { background: rgba(245, 158, 11, .14); border-color: rgba(245, 158, 11, .3); }
+body[data-ds-dark-theme] .tp-confirm-title { color: var(--dsw-alias-state-warn-primary, #f59e0b); }
+body[data-ds-dark-theme] .tp-confirm-hint { color: var(--dsw-alias-state-warn-label, #dd8629); }
+body[data-ds-dark-theme] .tp-error { background: rgba(242, 90, 90, .16); color: var(--dsw-alias-state-error-primary, #f25a5a); }
 `
 
 let injected = false
